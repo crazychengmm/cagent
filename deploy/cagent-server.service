@@ -1,0 +1,29 @@
+[Unit]
+Description=cagent server — enrollment, mTLS control plane and management API
+Documentation=https://github.com/crazychengmm/cagent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+
+ExecStart=/usr/local/bin/cagent server --config /etc/cagent/server.yaml
+
+Restart=on-failure
+RestartSec=2s
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cagent-server
+
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

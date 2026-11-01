@@ -329,3 +329,10 @@
 - 测试：management RPC（token 生命周期/agent/run/job 读取与取消离线错误）、ctl 配置文件/环境覆盖/缺凭据/flag 解析/帮助码。
 - 问题：management.TokenService 接口签名与 enrollment.CreateToken 参数顺序初版不一致，按实际对齐；recordingOnline 需对离线 id 返回 ErrAgentOffline；t.Setenv 与 t.Parallel 冲突，相关用例去 Parallel。
 - 自检：全量 race 绿、交叉编译通过、openspec validate strict 通过。
+
+### 2026-11-02 04:40 [NOTE] 任务 8.1-8.4 实现完成（任务组 8 收尾）
+- internal/paths：集中标准布局（二进制/配置/数据/身份文件/releases/升级状态、server 侧布局、单元名、默认端口）。
+- deploy/cagent.service：Type=simple、Restart=always RestartSec=2、WantedBy multi-user、journald、NoNewPrivileges/ProtectSystem/ProtectHome/PrivateTmp、TimeoutStopSec；cagent-server.service 同构（Restart=on-failure）。
+- scripts/install.sh（可执行，sh -n 通过）：必填参数与 CA/指纹互斥校验、root+systemctl+glibc+amd64/arm64 检测、install 原子落位+二进制可执行预检、配置 0600（不回显 token）、unit 安装（缺 deploy 时内置兜底）、daemon-reload+enable+restart+is-active 确认、trap 回滚已落文件；无任何 insecure 开关。
+- test/e2e：Dockerfile.systemd（ubuntu 22.04 + systemd）与 docker_systemd_test.sh（布局安装、kill -9 MainPID 后验证新 PID 且 active）；脚本在镜像不可达时显式 SKIP。
+- 【PROBLEM】本机 OrbStack docker.io/auth.docker.io 超时（与 ghcr 同源网络限制），镜像站 daocloud/1panel 此刻也不可达，容器实跑留待 CI；脚本已支持镜像站回退与 SKIP，语法与资产齐备。

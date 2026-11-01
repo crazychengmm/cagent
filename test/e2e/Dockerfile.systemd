@@ -1,0 +1,12 @@
+# 支持 systemd 的最小测试镜像（仅用于 e2e 安装/重启/回滚验证）。
+# docker build -f test/e2e/Dockerfile.systemd -t cagent-systemd .
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        systemd systemd-sysv dbus ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# systemd 在容器内运行所需
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

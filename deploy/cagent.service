@@ -1,0 +1,35 @@
+[Unit]
+Description=cagent — managed node agent (mTLS control connection)
+Documentation=https://github.com/crazychengmm/cagent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 以 root 运行：远程运维操作需要特权；所有远程操作均经 mTLS + 审计。
+User=root
+Group=root
+
+ExecStart=/usr/local/bin/cagent agent --config /etc/cagent/config.yaml
+
+# 崩溃/被杀自动拉起；配合 guard 在升级失败时回滚旧二进制。
+Restart=always
+RestartSec=2s
+
+# stdout/stderr 进入 journald，用 journalctl -u cagent 查看。
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cagent
+
+# 基础加固（不影响命令执行所需能力）。
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+# 优雅退出与升级替换窗口。
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target

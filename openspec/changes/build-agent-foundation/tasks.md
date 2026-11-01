@@ -51,9 +51,9 @@
 - [x] 7.5 实现 release package/sign/publish/list 与 upgrade（--release/--selector/--allow-downgrade 默认 false），Makefile package 目标（→ Requirement: Release and rollout commands）
 
 ## 8. 安装与 systemd
-- [ ] 8.1 实现标准文件布局：路径常量（/usr/local/bin/cagent、/etc/cagent/config.yaml、/var/lib/cagent/ 700、releases/ 旧版副本目录）与首启目录初始化（→ Requirement: Standard filesystem layout）
-- [ ] 8.2 编写 deploy/cagent.service：Restart=always、开机自启、stdout/stderr 进 journald；一并提供 cagent-server 单元模板（→ Requirement: systemd lifecycle integration）
-- [ ] 8.3 编写 scripts/install.sh：必填 --server/--token/--server-ca 与可选标签；先做平台检测（systemd、glibc、发行版矩阵、amd64/arm64）不满足即退出；下载放置→写配置→注册→装 unit→enable+start，任一步失败回滚清理不留半安装（→ Requirement: One-command guided installation, Supported platform matrix）
+- [x] 8.1 实现标准文件布局：internal/paths 常量（/usr/local/bin/cagent、/etc/cagent、/var/lib/cagent 0700、releases/、server 侧布局）（→ Requirement: Standard filesystem layout）
+- [x] 8.2 deploy/cagent.service（Restart=always、WantedBy multi-user、journald、加固项）与 cagent-server.service 模板（→ Requirement: systemd lifecycle integration）
+- [x] 8.3 scripts/install.sh：必填 enrollment/control/token + CA/指纹二选一、--label 多次、root+systemd+glibc+架构检测、二进制可执行校验、临时文件原子落位、失败 trap 回滚、无 insecure（→ Requirement: One-command guided installation, Supported platform matrix）
 
 ## 9. 端到端验证
 - [ ] 9.1 补齐单元测试并跑通全量门禁：gofmt 无输出、go vet、go test ./... 全绿（选择器、状态机、执行器超时/取消、幂等、版本比较、CA/token、grace、guard 决策表）
