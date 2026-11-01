@@ -213,6 +213,12 @@
 - 坑：测试两处——①1h 证书配 59min RenewBefore 仍有 1min 等待，改 60min；②内存身份被原地更新导致新旧证书比较失效，改保存旧值快照；fake 里残留 range channel 空循环（会阻塞）已删。
 - 自检：14 包 race 全绿、交叉编译通过。
 
+### 2026-11-01 23:25 [NOTE] 任务 4.4 实现完成（任务组 4 收尾）
+- controlservice 实现 Control 双向流：streamRegistry（同 agent 重连新流替换并 cancel 旧流，remove 比对指针防误删）；handleHeartbeat 落库版本/标签并回 HeartbeatAck（对端证书 30 天内到期则 renew_cert_recommended）；吊销/删除 agent 的心跳落库 ErrNotFound → PermissionDenied 终止流（长连接上吊销即时生效，与建连 VerifyConnection 双保险）；SendToAgent/OnlineAgentIDs 供任务调度。
+- sweeper：RunOfflineSweeper 默认 10s 周期，ListAgentsOlderThan(now-45s) 批量置 offline，sweepOnce 导出供单测驱动；serve.Run 按 Deps.HeartbeatTimeout/SweepInterval 启动，cli 传 45s/10s。
+- 测试：真实 mTLS + agent Loop 集成（心跳置 online 且版本标签刷新、停止心跳后 sweepOnce 置 offline、吊销踢掉长连接且重连被拒、SendToAgent 离线错误）；适配 serve 测试（Control 已实现后半关闭得到 EOF 而非 Unimplemented）。
+- 自检：14 包 race 全绿、交叉编译通过。任务组 4（4.1-4.4 + 3.3a）完成。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

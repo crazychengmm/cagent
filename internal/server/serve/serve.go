@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/crazychengmm/cagent/internal/server/admin"
+	"github.com/crazychengmm/cagent/internal/server/controlservice"
 	"github.com/crazychengmm/cagent/internal/server/store"
 	"github.com/crazychengmm/cagent/internal/server/tlsconfig"
 	pb "github.com/crazychengmm/cagent/proto/cagent/v1"
@@ -35,6 +36,11 @@ type Deps struct {
 	AdminToken string
 	Store      *store.Store
 	Logger     *slog.Logger
+
+	// HeartbeatTimeout 超过该时长无心跳的 online agent 被扫描器置 offline。
+	HeartbeatTimeout time.Duration
+	// SweepInterval 离线扫描周期，<=0 取默认 10s。
+	SweepInterval time.Duration
 
 	// RegisterControl/RegisterAdmin 在对应 grpc.Server 上挂载业务服务，
 	// 由后续任务（控制通道、ctl API）注入；为 nil 时只起空端口。
@@ -94,6 +100,11 @@ func Run(ctx context.Context, d Deps) error {
 				d.Logger.Error("gRPC 服务异常退出", "port", ms.name, "error", err.Error())
 			}
 		}(ms)
+	}
+
+	if d.HeartbeatTimeout > 0 {
+		go controlservice.RunOfflineSweeper(ctx, d.Store,
+			d.HeartbeatTimeout, d.SweepInterval, d.Logger)
 	}
 
 	<-ctx.Done()

@@ -22,7 +22,7 @@
 - [x] 4.1 实现 agent 身份模块：本地私钥与 CSR 生成、UUID 持久化、证书原子写入、状态目录 700 权限（→ Requirement: Certificate enrollment and persistent agent identity）
 - [x] 4.2 实现首次注册信任锚点：加载 --server-ca（PEM 或指纹 pin），无锚点直接失败且不提供 insecure 开关，锚点不匹配时 TLS 失败且不发送 token；register 客户端完成 Enroll 调用，附单测（→ Requirement: Server trust anchor at installation）
 - [x] 4.3 实现控制循环：mTLS 主动出站长连接、断线指数退避自动重连、单条 Control 流多路复用收发；含 3.3a 证书临期续签调度、原子替换、失败告警不断连、替换后主动重连（→ Requirement: Outbound persistent connection and reconnect, Automatic certificate renewal）
-- [ ] 4.4 实现心跳与在线状态：agent 每 15s 上报 UUID/版本/标签全集；server 45s 超时标 offline、心跳恢复标 online 并刷新标签/版本，附状态判定单测（→ Requirement: Heartbeat and online status）
+- [x] 4.4 实现心跳与在线状态：agent 每 15s 上报 UUID/版本/标签全集；server Control 流接收心跳落库并回 Ack（含续签建议）、45s 扫描标 offline、心跳恢复标 online 并刷新标签/版本；同 agent 重连替换旧流，吊销经心跳即时踢下线（→ Requirement: Heartbeat and online status）
 
 ## 5. 远程任务执行
 - [ ] 5.1 实现 shell executor：root 经 /bin/sh -c 执行、可指定工作目录与追加环境变量、独立进程组启动、超时/取消时杀掉整个进程组，附单测（→ Requirement: Shell execution model, Job cancellation）

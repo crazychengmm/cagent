@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -275,6 +276,8 @@ func runServer(args []string, stderr io.Writer) int {
 		AdminToken:       adminToken,
 		Store:            db,
 		Logger:           logger,
+		HeartbeatTimeout: cfg.HeartbeatTimeout.Std(),
+		SweepInterval:    10 * time.Second,
 		RegisterControl: func(s *grpc.Server) {
 			pb.RegisterControlServiceServer(s, controlService)
 		},

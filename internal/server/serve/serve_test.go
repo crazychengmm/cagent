@@ -244,8 +244,8 @@ func TestServe_RenewCertOverMutualTLS(t *testing.T) {
 		t.Errorf("续签后旧证书应被拒(Unavailable)，实际 code=%v err=%v", status.Code(err), err)
 	}
 
-	// 新证书可正常通过 mTLS（Control 尚未实现 → Unimplemented）。
-	if err := openControlStream(t, h.controlAddr, h.caPEM, &newCert); status.Code(err) != codes.Unimplemented {
+	// 新证书可正常通过 mTLS（握手通过即不会是 Unavailable）。
+	if err := openControlStream(t, h.controlAddr, h.caPEM, &newCert); status.Code(err) == codes.Unavailable {
 		t.Errorf("新证书应通过 mTLS，实际 code=%v err=%v", status.Code(err), err)
 	}
 }
@@ -315,8 +315,10 @@ func TestServe_ControlPortMutualTLS(t *testing.T) {
 	t.Run("有效 agent 证书通过", func(t *testing.T) {
 		cert := h.enrollAgent(t, h.createToken(t))
 		err := openControlStream(t, h.controlAddr, h.caPEM, &cert)
-		if status.Code(err) != codes.Unimplemented {
-			t.Errorf("mTLS 成功后应得到空服务 Unimplemented，实际 code=%v err=%v", status.Code(err), err)
+		// Control 已实现：握手通过后客户端立即半关闭，得到的是正常结束
+		// （OK/Unknown），而非握手失败 Unavailable。
+		if status.Code(err) == codes.Unavailable {
+			t.Errorf("有效证书不应握手失败，实际 code=%v err=%v", status.Code(err), err)
 		}
 	})
 
