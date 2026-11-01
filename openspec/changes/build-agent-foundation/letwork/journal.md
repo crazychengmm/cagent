@@ -149,6 +149,12 @@
 - 冒烟：agent 输出两行合法 JSON（INFO 启动 + WARN 占位）；无参/未知子命令 exit 2；双架构交叉编译通过。
 - 自检：gofmt clean、vet、build、go test -race（cli/config/logging 均 ok）。任务组 1（1.1-1.4）全部完成。
 
+### 2026-11-01 21:45 [NOTE] 任务 2.1 实现完成
+- 改动：internal/server/store（store.go Open/WAL/user_version 迁移；schema.go 六表；agents/tokens/jobs/audit/releases 各自模型与 CRUD）；store_test.go 覆盖迁移幂等、token 哈希存储/吊销、agent 心跳/超时扫描、job 状态 CAS 与外键/级联、输出顺序与字节统计、审计、release。
+- 关键决策：选 modernc.org/sqlite 纯 Go 驱动（非 mattn cgo），DSN 每连接 PRAGMA foreign_keys/busy_timeout；SetMaxOpenConns(1) 避免写锁竞争；时间存 UTC RFC3339Nano TEXT；enrollment token 只存 SHA-256 哈希（C-SEC-03），库中无明文；UpdateJobState 用 WHERE status NOT IN(终态) 防终态回退；动态查询只拼固定子句、值全参数化。
+- 自检：gofmt/vet/build、go test -race 全绿；关键验证——CGO_ENABLED=0 双架构（amd64/arm64）静态链接成功，SQLite 无 cgo 依赖。
+- 问题：UpdateJobState 占位参数顺序一度写乱并留死代码，整文件重写修正（未进提交）；三次手写 struct/const 空格对齐被 gofmt 拦截，已统一「写完先 gofmt -w」。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
