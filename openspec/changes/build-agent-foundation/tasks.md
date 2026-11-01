@@ -13,7 +13,7 @@
 - [x] 2.4 实现 admin token 首启生成（数据目录 600 文件）与管理 API 的 token 鉴权拦截器（→ Requirement: CLI authentication）
 
 ## 3. 注册服务与 mTLS
-- [ ] 3.1 实现 EnrollmentService 的 Enroll：单向 TLS + token 校验 + CSR 验签后签发证书、创建 agents 行（UUID/标签），注册失败写审计，附单测（→ Requirement: Enrollment token lifecycle, Certificate enrollment and persistent agent identity）
+- [x] 3.1 实现 EnrollmentService 的 Enroll：单向 TLS + token 校验 + CSR 验签后签发证书、创建 agents 行（UUID/标签），注册失败写审计，附单测（→ Requirement: Enrollment token lifecycle, Certificate enrollment and persistent agent identity）
 - [ ] 3.2 实现 server Control 端口 mTLS 配置：强制客户端证书、校验证书链与吊销状态，无证书或已吊销连接被拒，附单测（→ Requirement: Mutual TLS enforcement）
 - [ ] 3.3 实现证书临期自动续签：agent 侧续签窗口调度、server RenewCert 签发、本地证书原子替换；续签失败告警但不断当前连接（→ Requirement: Automatic certificate renewal）
 

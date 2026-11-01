@@ -170,6 +170,12 @@
 - 问题：Stream 单测首版传 nil ServerStream，ss.Context() 先于授权求值导致 nil panic；改为嵌入 grpc.ServerStream 的 fakeStream（真实 gRPC 中 ss 不会为 nil），补有效 token 放行用例。
 - 自检：gofmt/vet/build、go test -race 全量 8 包全绿、交叉编译通过。任务组 2（2.1-2.4）完成。
 
+### 2026-11-01 22:30 [NOTE] 任务 3.1 实现完成
+- 改动：ca.SignAgentCSR 增加 commonName 入参，证书 CN=分配的 agent UUID（mTLS 后可直接从对端证书识别身份），CSR 仅证明持私钥；enrollservice 实现 Enroll：输入限制（hostname≤255、标签≤32 个/键≤128/值≤256）→ token Validate（PermissionDenied）→ uuid + 128 位 serial → CA 签发 → agents 落库（serial 十六进制、cert_not_after）→ MarkUsed → 成功/拒绝双审计；token 失败不区分过期/吊销以防探测。
+- 测试：bufconn 服务级单测（成功路径校验证书链/CN=UUID/落库/可复用 token/审计 actor；坏 token PermissionDenied+rejected 审计；坏 CSR InvalidArgument；4 个输入校验用例）。
+- 问题：新版 grpc-go bufconn 无 Dialer()，改 DialContext 包装；另误把测试 import 写进 service.go 已即时纠正，均未进提交。
+- 自检：gofmt/vet/build、go test -race 全绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

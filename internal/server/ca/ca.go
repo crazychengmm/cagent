@@ -134,7 +134,10 @@ func NewSerial() (*big.Int, error) {
 }
 
 // SignAgentCSR 校验 CSR 自签后签发仅用于客户端认证的 agent 证书。
-func (c *CA) SignAgentCSR(csrPEM []byte, serial *big.Int, notAfter time.Time) ([]byte, error) {
+// CSR 只用于证明持有对应私钥；证书主体 CN 取 commonName（即 agent UUID），
+// 使 mTLS 握手后可直接从对端证书识别 agent 身份。
+func (c *CA) SignAgentCSR(csrPEM []byte, commonName string,
+	serial *big.Int, notAfter time.Time) ([]byte, error) {
 	block, _ := pem.Decode(csrPEM)
 	if block == nil || block.Type != "CERTIFICATE REQUEST" {
 		return nil, errors.New("CSR PEM 解析失败")
@@ -146,6 +149,9 @@ func (c *CA) SignAgentCSR(csrPEM []byte, serial *big.Int, notAfter time.Time) ([
 	if err := csr.CheckSignature(); err != nil {
 		return nil, fmt.Errorf("CSR 签名无效: %w", err)
 	}
+	if commonName == "" {
+		return nil, errors.New("证书 CN 不能为空")
+	}
 	if serial == nil {
 		return nil, errors.New("序列号不能为空")
 	}
@@ -153,11 +159,14 @@ func (c *CA) SignAgentCSR(csrPEM []byte, serial *big.Int, notAfter time.Time) ([
 	now := time.Now()
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
-		Subject:      csr.Subject,
-		NotBefore:    now.Add(-clockSkewSlack),
-		NotAfter:     notAfter,
-		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		Subject: pkix.Name{
+			CommonName:         commonName,
+			OrganizationalUnit: []string{"cagent-agent"},
+		},
+		NotBefore:   now.Add(-clockSkewSlack),
+		NotAfter:    notAfter,
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, c.cert, csr.PublicKey, c.key)
 	if err != nil {

@@ -79,7 +79,7 @@ func TestSignAgentCSR_VerifiesAgainstCA(t *testing.T) {
 		t.Fatal(err)
 	}
 	notAfter := time.Now().Add(90 * 24 * time.Hour).UTC()
-	certPEM, err := root.SignAgentCSR(makeTestCSR(t, "agent-uuid-1"), serial, notAfter)
+	certPEM, err := root.SignAgentCSR(makeTestCSR(t, "host-local"), "agent-uuid-1", serial, notAfter)
 	if err != nil {
 		t.Fatalf("SignAgentCSR: %v", err)
 	}
@@ -124,10 +124,13 @@ func TestSignAgentCSR_RejectsInvalidCSR(t *testing.T) {
 		t.Fatal(err)
 	}
 	serial, _ := NewSerial()
-	if _, err := root.SignAgentCSR([]byte("not a pem"), serial, time.Now().Add(time.Hour)); err == nil {
+	if _, err := root.SignAgentCSR([]byte("not a pem"), "ag", serial, time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("非法 PEM 应报错")
 	}
-	if _, err := root.SignAgentCSR(makeTestCSR(t, "x"), nil, time.Now().Add(time.Hour)); err == nil {
+	if _, err := root.SignAgentCSR(makeTestCSR(t, "x"), "ag", nil, time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("空序列号应报错")
+	}
+	if _, err := root.SignAgentCSR(makeTestCSR(t, "x"), "", serial, time.Now().Add(time.Hour)); err == nil {
+		t.Fatal("空 CN 应报错")
 	}
 }

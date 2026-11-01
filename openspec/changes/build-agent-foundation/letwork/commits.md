@@ -13,3 +13,4 @@
 | 2.1 | 8991f3a | feat(store): SQLite WAL 六表迁移与 CRUD | internal/server/store/、go.mod/sum（modernc.org/sqlite） |
 | 2.2 | a369230 | feat(ca): 内置 ECDSA P-256 CA 与证书吊销状态检查 | internal/server/ca/、store schema/agents |
 | 2.3 | 8d2b201 | feat(enrollment): enrollment token 签发与校验领域服务 | internal/server/enrollment/ |
+| 2.4 | ac89189 | feat(admin): 首启 admin token 与管理 API 鉴权拦截器 | internal/server/admin/ |
