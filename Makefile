@@ -11,9 +11,16 @@ LDFLAGS  := -s -w \
 
 DIST := dist
 
-.PHONY: all build build-linux fmt vet test test-race clean
+.PHONY: all build build-linux proto fmt vet test test-race clean
 
 all: build
+
+# 从 proto/ 重新生成 gRPC 代码（需 protoc + protoc-gen-go(-grpc)，见 proto/README.md）
+proto:
+	protoc --proto_path=proto \
+		--go_out=. --go_opt=module=$(MODULE) \
+		--go-grpc_out=. --go-grpc_opt=module=$(MODULE) \
+		proto/cagent/v1/*.proto
 
 # 本机构建（开发自测）
 build:

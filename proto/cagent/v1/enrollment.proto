@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package cagent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/crazychengmm/cagent/proto/cagent/v1;cagentv1";
+
+// EnrollmentService 仅在注册端口暴露，走服务器单向 TLS + enrollment token。
+// 注册成功后 agent 取得身份证书，全部业务通信改走 mTLS 端口的 ControlService。
+service EnrollmentService {
+  // Enroll 校验引导令牌与 CSR，为该机器签发首份身份证书并分配持久 UUID。
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+message EnrollRequest {
+  // 引导令牌：可复用、有有效期、可被吊销。
+  string enrollment_token = 1;
+  // PEM 编码的 PKCS#10 CSR，私钥由 agent 本地生成且永不上传。
+  bytes csr_pem = 2;
+  // 机器主机名，仅用于管理展示与审计。
+  string hostname = 3;
+  // 初始静态标签（来自 agent 配置文件），随注册写入。
+  map<string, string> labels = 4;
+}
+
+message EnrollResponse {
+  // server 分配的持久 UUID，重装（身份文件丢失）会得到新 UUID。
+  string agent_id = 1;
+  // PEM 编码的 agent 身份证书。
+  bytes certificate_pem = 2;
+  // PEM 编码的 server CA 证书，用于 agent 校验信任链。
+  bytes ca_certificate_pem = 3;
+  // 证书到期时间。
+  google.protobuf.Timestamp not_after = 4;
+}

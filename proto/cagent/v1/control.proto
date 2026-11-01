@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package cagent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/crazychengmm/cagent/proto/cagent/v1;cagentv1";
+
+// ControlService 在 mTLS 端口暴露，调用方必须持有有效 agent 证书。
+service ControlService {
+  // Agent 主动发起的双向长连接，多路复用心跳、任务下发/事件与升级指令/事件。
+  rpc Control(stream AgentMessage) returns (stream ServerMessage);
+
+  // 证书临期时经既有 mTLS 连接续签。
+  rpc RenewCert(RenewCertRequest) returns (RenewCertResponse);
+
+  // 流式拉取已发布的升级包，版本必须存在且调用方为已注册 agent。
+  rpc DownloadRelease(DownloadReleaseRequest) returns (stream ReleaseChunk);
+}
+
+message RenewCertRequest {
+  // PEM 编码的新 CSR（可沿用原私钥）。
+  bytes csr_pem = 1;
+}
+
+message RenewCertResponse {
+  bytes certificate_pem = 1;
+  google.protobuf.Timestamp not_after = 2;
+}
+
+message DownloadReleaseRequest {
+  string version = 1;
+}
+
+message ReleaseChunk {
+  // 分片数据，顺序拼接即发布物原文。
+  bytes data = 1;
+}
+
+// Agent -> Server
+message AgentMessage {
+  oneof payload {
+    Heartbeat heartbeat = 1;
+    JobEvent job_event = 2;
+    UpgradeEvent upgrade_event = 3;
+  }
+}
+
+message Heartbeat {
+  // 与 mTLS 证书对应的持久 UUID，冗余携带便于日志关联。
+  string agent_id = 1;
+  // agent 二进制版本（语义化版本）。
+  string version = 2;
+  // 配置文件中的静态标签全集，server 以此刷新。
+  map<string, string> labels = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+message JobEvent {
+  string job_id = 1;
+
+  oneof event {
+    JobStarted started = 2;
+    JobOutput output = 3;
+    JobFinished finished = 4;
+  }
+}
+
+message JobStarted {
+  google.protobuf.Timestamp at = 1;
+}
+
+message JobOutput {
+  enum Stream {
+    STREAM_UNSPECIFIED = 0;
+    STREAM_STDOUT = 1;
+    STREAM_STDERR = 2;
+  }
+  Stream stream = 1;
+  bytes data = 2;
+}
+
+// Agent 上报的 job 终态；PENDING/EXPIRED 只存在于 server 侧。
+message JobFinished {
+  enum Result {
+    RESULT_UNSPECIFIED = 0;
+    RESULT_SUCCEEDED = 1;
+    RESULT_FAILED = 2;
+    RESULT_TIMEOUT = 3;
+    RESULT_CANCELED = 4;
+  }
+  Result result = 1;
+  // 仅 SUCCEEDED/FAILED 有意义；TIMEOUT/CANCELED 可为 -1。
+  int32 exit_code = 2;
+  // 输出超过 1MB 上限被截断时为 true。
+  bool truncated = 3;
+  // 失败/超时/取消的人类可读原因。
+  string message = 4;
+  google.protobuf.Timestamp at = 5;
+}
+
+message UpgradeEvent {
+  string job_id = 1;
+
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    // 已通过版本判断/验签，开始替换重启流程。
+    STATUS_INSTALLING = 1;
+    STATUS_SUCCEEDED = 2;
+    STATUS_FAILED = 3;
+    // 健康门控失败，guard 已恢复旧版本。
+    STATUS_ROLLED_BACK = 4;
+  }
+  Status status = 2;
+  string message = 3;
+  string from_version = 4;
+  string to_version = 5;
+}
+
+// Server -> Agent
+message ServerMessage {
+  oneof payload {
+    HeartbeatAck heartbeat_ack = 1;
+    JobDispatch job_dispatch = 2;
+    JobCancel job_cancel = 3;
+    UpgradeCommand upgrade_command = 4;
+  }
+}
+
+message HeartbeatAck {
+  google.protobuf.Timestamp server_time = 1;
+  // server 发现证书临期时提示 agent 续签。
+  bool renew_cert_recommended = 2;
+}
+
+message JobDispatch {
+  string job_id = 1;
+  // 经 /bin/sh -c 执行的命令全文。
+  string command = 2;
+  string working_dir = 3;
+  // 在默认环境基础上追加的环境变量。
+  map<string, string> extra_env = 4;
+  // 0 表示使用 agent 默认超时（5 分钟）；硬上限 60 分钟由 server 校验。
+  int64 timeout_seconds = 5;
+  // 下发操作者，写入审计。
+  string requested_by = 6;
+}
+
+message JobCancel {
+  string job_id = 1;
+}
+
+message UpgradeCommand {
+  // 升级复用 job 机制（排队/补投/幂等），同一 job_id 重投不得重复升级。
+  string job_id = 1;
+  string version = 2;
+  // 发布物 SHA256（十六进制）。
+  string sha256_hex = 3;
+  // 对发布物原文的 ed25519 签名。
+  bytes signature = 4;
+  int64 package_size = 5;
+  // 仅显式下发时允许降级安装。
+  bool allow_downgrade = 6;
+  string requested_by = 7;
+}

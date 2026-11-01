@@ -126,6 +126,14 @@
 - 自检：gofmt 无输出、go vet 通过、go build 通过；make build-linux 产出 linux/amd64+arm64 静态 ELF（stripped）；--version 冒烟正常。
 - 工具链：brew 装 go 1.27.3（ghcr.io 下载慢约 10 分钟；曾并行尝试官方镜像，brew 完成后已停止清理）。
 - git 身份：仓库级配置 crazychengmm <crazychengmm@users.noreply.github.com>（用户可自行更改）。
+- 已提交：f289666（step，OpenSpec 脚手架+规范）、7e5259f（step，change 规划产物）、3d30f2a（任务 1.1，Go 骨架）；账本见 commits.md。
+- 用户授权：2026-11-01 21:12 起「持续开发、不再询问」，取舍取推荐方案并记 journal，逐任务自检后直接提交，但不自动 push。
+
+### 2026-11-01 21:23 [NOTE] 任务 1.2 实现完成
+- 改动：proto/cagent/v1/enrollment.proto（EnrollmentService.Enroll）、control.proto（Control 双向流 + RenewCert + DownloadRelease，消息含 Heartbeat/JobDispatch/JobEvent(Started/Output/Finished)/JobCancel/UpgradeCommand/UpgradeEvent/HeartbeatAck）；make proto 生成 4 个 pb.go 并入库；proto/README 写工具与生成命令；Makefile 增 proto 目标；go mod tidy 引入 grpc v1.85.0、protobuf v1.36.12（GOPROXY=goproxy.cn）。
+- 设计细化（DECISION 级，落入 proto 注释）：续签与下载放在 mTLS 端口而非注册端口；升级复用 job_id 语义；心跳冗余带 agent_id 便于日志关联；JobFinished 四结果枚举（PENDING/EXPIRED 仅 server 侧）。
+- 工具链：protoc 36.2（brew）、protoc-gen-go/grpc（go install，~/go/bin）。
+- 自检：gofmt clean、vet/build 通过、双架构静态交叉编译通过、go test 无测试文件包正常。
 
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
