@@ -57,7 +57,7 @@ func TestOnDispatch_ReplayCachedResultWithoutReexecute(t *testing.T) {
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m := NewManager(2, exec, discardLogger())
+	m := NewManager(2, exec, discardLogger(), nil)
 	m.Start(ctx)
 
 	sender1 := &fakeSender{}

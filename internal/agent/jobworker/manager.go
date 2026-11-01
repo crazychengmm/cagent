@@ -5,18 +5,51 @@ package jobworker
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
+	agentaudit "github.com/crazychengmm/cagent/internal/agent/audit"
 	"github.com/crazychengmm/cagent/internal/agent/control"
 	"github.com/crazychengmm/cagent/internal/agent/executor"
 	pb "github.com/crazychengmm/cagent/proto/cagent/v1"
 )
 
+// previewBuffer 只保留输出前 4KB 供本地审计摘要。
+type previewBuffer struct {
+	b strings.Builder
+}
+
+func (p *previewBuffer) Write(data []byte) {
+	if p.b.Len() >= outputPreviewLimit {
+		return
+	}
+	remaining := outputPreviewLimit - p.b.Len()
+	if len(data) > remaining {
+		data = data[:remaining]
+	}
+	p.b.Write(data)
+}
+
+func (p *previewBuffer) String() string { return p.b.String() }
+
 const (
 	defaultTimeout = 5 * time.Minute
 	queueCapacity  = 1024
+	// outputPreviewLimit 本地审计记录保留的输出前缀长度。
+	outputPreviewLimit = 4096
 )
+
+// Auditor 是本地执行审计（由 audit.FileLogger 满足）。
+type Auditor interface {
+	JobStarted(e agentaudit.JobStart) error
+	JobFinished(e agentaudit.JobFinish) error
+}
+
+type nopAuditor struct{}
+
+func (nopAuditor) JobStarted(agentaudit.JobStart) error   { return nil }
+func (nopAuditor) JobFinished(agentaudit.JobFinish) error { return nil }
 
 // tracked 记录一个已接收任务的取消句柄与其排队期间是否已被取消。
 type tracked struct {
@@ -36,6 +69,7 @@ type Manager struct {
 	mu      sync.Mutex
 	running map[string]*tracked
 	cache   *resultCache
+	auditor Auditor
 	wg      sync.WaitGroup
 }
 
@@ -45,8 +79,11 @@ type queuedJob struct {
 	ctx      context.Context
 }
 
-// NewManager 构造并发数为 concurrency 的执行池。
-func NewManager(concurrency int, exec executor.Executor, logger *slog.Logger) *Manager {
+// NewManager 构造并发数为 concurrency 的执行池；auditor 为 nil 时不记录本地审计。
+func NewManager(concurrency int, exec executor.Executor, logger *slog.Logger, auditor Auditor) *Manager {
+	if auditor == nil {
+		auditor = nopAuditor{}
+	}
 	return &Manager{
 		exec:    exec,
 		logger:  logger,
@@ -54,6 +91,7 @@ func NewManager(concurrency int, exec executor.Executor, logger *slog.Logger) *M
 		queue:   make(chan *queuedJob, queueCapacity),
 		running: make(map[string]*tracked),
 		cache:   newResultCache(defaultResultCacheCapacity),
+		auditor: auditor,
 	}
 }
 
@@ -194,9 +232,11 @@ func (m *Manager) execute(job *queuedJob) {
 	m.mu.Unlock()
 	if canceledBeforeStart {
 		m.sendEvent(job.sender, d.GetJobId(), executor.Event{Kind: executor.EventStarted})
+		m.auditStart(d)
 		m.sendEvent(job.sender, d.GetJobId(), executor.Event{
 			Kind: executor.EventFinished, Result: executor.ResultCanceled, ExitCode: -1,
 		})
+		m.auditFinish(d, executor.Event{Result: executor.ResultCanceled, ExitCode: -1}, "")
 		return
 	}
 
@@ -210,9 +250,17 @@ func (m *Manager) execute(job *queuedJob) {
 		ExtraEnv:   d.GetExtraEnv(),
 		Timeout:    timeout,
 	}
+
+	var preview previewBuffer
+	var final executor.Event
+	m.auditStart(d)
 	for ev := range m.exec.Run(job.ctx, spec) {
+		if ev.Kind == executor.EventOutput {
+			preview.Write(ev.Data)
+		}
 		m.sendEvent(job.sender, d.GetJobId(), ev)
 		if ev.Kind == executor.EventFinished {
+			final = ev
 			// 缓存终态供重发幂等；输出不缓存（server 已落库）。
 			m.cache.put(d.GetJobId(), &pb.JobFinished{
 				Result:   mapResult(ev.Result),
@@ -220,6 +268,31 @@ func (m *Manager) execute(job *queuedJob) {
 				Message:  ev.Message,
 			})
 		}
+	}
+	m.auditFinish(d, final, preview.String())
+}
+
+func (m *Manager) auditStart(d *pb.JobDispatch) {
+	if err := m.auditor.JobStarted(agentaudit.JobStart{
+		TS:          time.Now().UTC(),
+		JobID:       d.GetJobId(),
+		RequestedBy: d.GetRequestedBy(),
+		Command:     d.GetCommand(),
+		WorkingDir:  d.GetWorkingDir(),
+	}); err != nil {
+		m.logger.Warn("写本地开始审计失败", "job_id", d.GetJobId(), "error", err.Error())
+	}
+}
+
+func (m *Manager) auditFinish(d *pb.JobDispatch, ev executor.Event, preview string) {
+	if err := m.auditor.JobFinished(agentaudit.JobFinish{
+		TS:            time.Now().UTC(),
+		JobID:         d.GetJobId(),
+		Result:        string(ev.Result),
+		ExitCode:      ev.ExitCode,
+		OutputPreview: preview,
+	}); err != nil {
+		m.logger.Warn("写本地结束审计失败", "job_id", d.GetJobId(), "error", err.Error())
 	}
 }
 

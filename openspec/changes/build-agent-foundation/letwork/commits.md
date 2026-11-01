@@ -25,3 +25,5 @@
 | 5.2 | 5e86a03 | feat(agent): 本地 worker 池与输出管道竞态修复 | internal/agent/jobworker、executor |
 | 5.3 | bfb00f1 | feat(server): job 事件状态机与流式输出 1MB 截断 | internal/server/controlservice |
 | 5.4 | 2042f64 | feat(agent): job 终态结果缓存与重发幂等 | internal/agent/jobworker |
+| 5.5 | 6b528d6 | feat(server): 标签 AND 选择器调度与在线下发 | internal/server/dispatch |
+| 5.6 | 0836d47 | feat(server): 重连补投与 24h 排队过期扫描 | internal/server/controlservice、store、serve |

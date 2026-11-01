@@ -253,6 +253,14 @@
 - 测试：store 过期扫描；真实 mTLS+Loop 重连补投 2 个 pending；ExpireOnce 只过 stale pending。
 - 自检：全量 race 绿、交叉编译通过。
 
+### 2026-11-02 01:05 [NOTE] 任务 5.7 实现完成（任务组 5 收尾）
+- internal/agent/audit：FileLogger（audit.log JSONL，O_APPEND，0700/0600，互斥并发安全），JobStart/JobFinish 记录（requested_by/命令/工作目录/result/exit_code/4KB 输出预览）。
+- jobworker：Auditor 接口注入（nil→nop），execute 记开始/结束，排队取消也留痕，previewBuffer 截断 4KB。
+- cli runAgent 接线：OpenFileLogger(dataDir)、NewManager(concurrency, executor, logger, auditor)、Start 后作为 control.Config.JobHandler——下行任务从控制流到执行回传全链路打通。
+- 测试：audit 包 3 组（JSONL/权限、重开追加、20 goroutine 并发 20 行）；worker 审计 3 组（开始结束字段、预览恰好 4096、排队取消 canceled）；-count=3 稳定。
+- 问题：recordingAuditor 无锁读取被 race 检测抓出（findFinish 直读切片），改走加锁 finish 方法，持锁内不重复加锁。
+- 自检：18 包 race 全绿、交叉编译通过。任务组 5（5.1-5.7）完成。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

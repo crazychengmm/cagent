@@ -67,7 +67,7 @@ func newTestManager(t *testing.T, concurrency int) (*Manager, context.CancelFunc
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	m := NewManager(concurrency, executor.NewLocalExecutor(),
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+		slog.New(slog.NewTextHandler(io.Discard, nil)), nil)
 	m.Start(ctx)
 	t.Cleanup(func() {
 		cancel()

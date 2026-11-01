@@ -15,8 +15,11 @@ import (
 
 	"google.golang.org/grpc"
 
+	agentaudit "github.com/crazychengmm/cagent/internal/agent/audit"
 	"github.com/crazychengmm/cagent/internal/agent/control"
+	"github.com/crazychengmm/cagent/internal/agent/executor"
 	"github.com/crazychengmm/cagent/internal/agent/identity"
+	"github.com/crazychengmm/cagent/internal/agent/jobworker"
 	"github.com/crazychengmm/cagent/internal/agent/register"
 	"github.com/crazychengmm/cagent/internal/agent/trust"
 	"github.com/crazychengmm/cagent/internal/config"
@@ -109,11 +112,23 @@ func runAgent(args []string, stderr io.Writer) int {
 		return code
 	}
 
+	auditor, err := agentaudit.OpenFileLogger(cfg.DataDir)
+	if err != nil {
+		logger.Error("打开本地审计文件失败", "error", err.Error())
+		return exitError
+	}
+	defer auditor.Close()
+
+	manager := jobworker.NewManager(cfg.JobConcurrency,
+		executor.NewLocalExecutor(), logger, auditor)
+	manager.Start(ctx)
+
 	logger.Info("agent 启动",
 		"agent_id", ident.AgentID,
 		"control_address", cfg.ControlAddress,
 		"data_dir", cfg.DataDir,
-		"labels", cfg.Labels)
+		"labels", cfg.Labels,
+		"job_concurrency", cfg.JobConcurrency)
 
 	loop, err := control.New(control.Config{
 		Identity:          ident,
@@ -122,6 +137,7 @@ func runAgent(args []string, stderr io.Writer) int {
 		HeartbeatInterval: cfg.HeartbeatInterval.Std(),
 		Labels:            cfg.Labels,
 		Version:           version.Version,
+		JobHandler:        manager,
 		Logger:            logger,
 	})
 	if err != nil {
