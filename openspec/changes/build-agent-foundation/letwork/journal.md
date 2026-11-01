@@ -236,6 +236,11 @@
 - 测试 5 组：完整生命周期（started_at/输出顺序流/字节统计/终态/审计）、failed exit2+message、终态不可回退、2.4MB 截断到恰好 1MB 且 truncated、未知 job 忽略。
 - 自检：全量 race 绿、交叉编译通过。
 
+### 2026-11-02 00:25 [NOTE] 任务 5.4 实现完成
+- jobworker 加 resultCache（FIFO 1000，只存 pb.JobFinished 终态，不存输出——输出已在 server 落库）；OnDispatch 三级判定：在跑/排队→忽略，缓存命中→回放 Started+Finished 不执行，否则登记入队；execute 完成后 put 终态。
+- 测试：scriptedExecutor 精确计数，重发同 job_id 到新 sender 时 Run 仅 1 次、回放无输出块；FIFO 淘汰与默认容量。
+- 自检：jobworker -count=3 稳定，全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

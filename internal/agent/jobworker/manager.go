@@ -35,6 +35,7 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]*tracked
+	cache   *resultCache
 	wg      sync.WaitGroup
 }
 
@@ -52,6 +53,7 @@ func NewManager(concurrency int, exec executor.Executor, logger *slog.Logger) *M
 		workers: concurrency,
 		queue:   make(chan *queuedJob, queueCapacity),
 		running: make(map[string]*tracked),
+		cache:   newResultCache(defaultResultCacheCapacity),
 	}
 }
 
@@ -90,14 +92,57 @@ func (m *Manager) OnDispatch(_ context.Context, sender control.Sender, d *pb.Job
 		m.logger.Error("worker 池未 Start，丢弃任务", "job_id", d.GetJobId())
 		return
 	}
-	if !m.register(d.GetJobId()) {
+	if m.isRunning(d.GetJobId()) {
 		m.logger.Warn("任务已在执行/排队，忽略重复派发", "job_id", d.GetJobId())
+		return
+	}
+	// 已完成任务的重发：直接回放终态，绝不重新执行（幂等）。
+	if fin, ok := m.cache.get(d.GetJobId()); ok {
+		m.logger.Info("命中已完成结果缓存，直接回传不重复执行", "job_id", d.GetJobId())
+		m.replay(d.GetJobId(), sender, fin)
+		return
+	}
+	if !m.register(d.GetJobId()) {
+		m.logger.Warn("并发登记失败，忽略", "job_id", d.GetJobId())
 		return
 	}
 
 	jobCtx, cancel := context.WithCancel(m.rootCtx)
 	m.setCancel(d.GetJobId(), cancel)
 	m.queue <- &queuedJob{dispatch: d, sender: sender, ctx: jobCtx}
+}
+
+func (m *Manager) isRunning(jobID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.running[jobID]
+	return ok
+}
+
+// replay 向新控制流回放缓存的 Started 与终态（输出已在 server 落库，无需重放）。
+func (m *Manager) replay(jobID string, sender control.Sender, fin *pb.JobFinished) {
+	m.sendEvent(sender, jobID, executor.Event{Kind: executor.EventStarted})
+	m.sendEvent(sender, jobID, executor.Event{
+		Kind:     executor.EventFinished,
+		Result:   mapBack(fin.GetResult()),
+		ExitCode: int(fin.GetExitCode()),
+		Message:  fin.GetMessage(),
+	})
+}
+
+func mapBack(r pb.JobFinished_Result) executor.ResultKind {
+	switch r {
+	case pb.JobFinished_RESULT_SUCCEEDED:
+		return executor.ResultSucceeded
+	case pb.JobFinished_RESULT_FAILED:
+		return executor.ResultFailed
+	case pb.JobFinished_RESULT_TIMEOUT:
+		return executor.ResultTimeout
+	case pb.JobFinished_RESULT_CANCELED:
+		return executor.ResultCanceled
+	default:
+		return executor.ResultFailed
+	}
 }
 
 // OnCancel 实现 control.JobHandler：取消排队/在跑任务（杀整个进程组）。
@@ -167,6 +212,14 @@ func (m *Manager) execute(job *queuedJob) {
 	}
 	for ev := range m.exec.Run(job.ctx, spec) {
 		m.sendEvent(job.sender, d.GetJobId(), ev)
+		if ev.Kind == executor.EventFinished {
+			// 缓存终态供重发幂等；输出不缓存（server 已落库）。
+			m.cache.put(d.GetJobId(), &pb.JobFinished{
+				Result:   mapResult(ev.Result),
+				ExitCode: int32(ev.ExitCode),
+				Message:  ev.Message,
+			})
+		}
 	}
 }
 

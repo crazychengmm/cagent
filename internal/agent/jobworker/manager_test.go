@@ -82,6 +82,10 @@ func dispatch(jobID, command string, timeoutSec int64) *pb.JobDispatch {
 
 var _ control.Sender = (*fakeSender)(nil)
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
 func TestManager_AllJobsComplete(t *testing.T) {
 	t.Parallel()
 
