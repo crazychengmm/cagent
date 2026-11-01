@@ -125,6 +125,9 @@ func TestLoadServerConfig_Defaults(t *testing.T) {
 	if cfg.QueueTTL.Std() != 24*time.Hour {
 		t.Errorf("QueueTTL = %s, 期望 24h", cfg.QueueTTL.Std())
 	}
+	if len(cfg.ServerCertHosts) != 2 || cfg.ServerCertHosts[0] != "localhost" {
+		t.Errorf("ServerCertHosts 默认值 = %v", cfg.ServerCertHosts)
+	}
 }
 
 func TestServerConfig_ValidateRejectsDuplicateListen(t *testing.T) {

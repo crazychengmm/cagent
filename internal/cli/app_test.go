@@ -108,18 +108,28 @@ labels:
 	})
 }
 
-func TestRun_Server(t *testing.T) {
+func TestRun_ServerConfigErrors(t *testing.T) {
 	t.Parallel()
 
-	path := writeFile(t, "server.yaml", `data_dir: "/tmp/cagent-server-test"`+"\n")
-	var stdout, stderr bytes.Buffer
-	code := Run([]string{"server", "--config", path}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("退出码 = %d, stderr = %s", code, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), `"enrollment_listen":":9443"`) {
-		t.Errorf("默认监听未进入日志: %s", stderr.String())
-	}
+	// 合法配置会真实启动三个监听端口并阻塞到收到信号，
+	// 成功路径由 internal/server/serve 的集成测试覆盖，这里只测启动前失败。
+	t.Run("配置缺失", func(t *testing.T) {
+		t.Parallel()
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"server", "--config", filepath.Join(t.TempDir(), "no.yaml")}, &stdout, &stderr)
+		if code != 1 {
+			t.Errorf("缺配置退出码 = %d, 期望 1", code)
+		}
+	})
+	t.Run("非法配置", func(t *testing.T) {
+		t.Parallel()
+		path := writeFile(t, "bad-server.yaml", "enrollment_listen: \":9444\"\ncontrol_listen: \":9444\"\n")
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"server", "--config", path}, &stdout, &stderr)
+		if code != 1 {
+			t.Errorf("监听重叠配置退出码 = %d, 期望 1", code)
+		}
+	})
 }
 
 func TestRun_CtlPlaceholder(t *testing.T) {

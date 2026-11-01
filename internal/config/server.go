@@ -21,7 +21,12 @@ const (
 	defaultQueueTTL           = 24 * time.Hour
 	defaultAgentCertValidity  = 90 * 24 * time.Hour
 	defaultEnrollmentTokenTTL = 7 * 24 * time.Hour
+	// ServerCertValidity 是首启生成的 server 叶子证书有效期（删文件重签轮换）。
+	ServerCertValidity = 10 * 365 * 24 * time.Hour
 )
+
+// 默认的 server 证书 SAN（生产安装应在配置中追加实际访问主机名/IP）。
+var defaultServerCertHosts = []string{"localhost", "127.0.0.1"}
 
 // ServerConfig 是 /etc/cagent-server/config.yaml 的解析结果。
 type ServerConfig struct {
@@ -33,6 +38,8 @@ type ServerConfig struct {
 	AdminListen string `yaml:"admin_listen"`
 	// DataDir CA 根密钥、SQLite、admin token 的存放目录。
 	DataDir string `yaml:"data_dir"`
+	// ServerCertHosts 首启生成的 server 叶子证书 SAN（DNS 或 IP）。
+	ServerCertHosts []string `yaml:"server_cert_hosts"`
 
 	// HeartbeatTimeout 多久收不到心跳判 offline。
 	HeartbeatTimeout Duration `yaml:"heartbeat_timeout"`
@@ -55,6 +62,7 @@ func DefaultServerConfig() *ServerConfig {
 		QueueTTL:           Duration(defaultQueueTTL),
 		AgentCertValidity:  Duration(defaultAgentCertValidity),
 		EnrollmentTokenTTL: Duration(defaultEnrollmentTokenTTL),
+		ServerCertHosts:    append([]string(nil), defaultServerCertHosts...),
 	}
 }
 
@@ -95,6 +103,14 @@ func (c *ServerConfig) Validate() error {
 	}
 	if c.DataDir == "" {
 		return errors.New("data_dir 不能为空")
+	}
+	if len(c.ServerCertHosts) == 0 {
+		c.ServerCertHosts = append([]string(nil), defaultServerCertHosts...)
+	}
+	for _, host := range c.ServerCertHosts {
+		if host == "" {
+			return errors.New("server_cert_hosts 不能含空条目")
+		}
 	}
 	if c.HeartbeatTimeout.Std() <= 0 {
 		return errors.New("heartbeat_timeout 必须为正数")

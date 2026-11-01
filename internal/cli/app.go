@@ -1,14 +1,24 @@
 // Package cli 实现 cagent 二进制的子命令分发（agent/server/ctl）。
-// 业务运行逻辑在后续任务接入，本包只负责参数解析、配置加载与日志接线。
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 
 	"github.com/crazychengmm/cagent/internal/config"
 	"github.com/crazychengmm/cagent/internal/logging"
+	"github.com/crazychengmm/cagent/internal/server/admin"
+	"github.com/crazychengmm/cagent/internal/server/ca"
+	"github.com/crazychengmm/cagent/internal/server/enrollment"
+	"github.com/crazychengmm/cagent/internal/server/enrollservice"
+	"github.com/crazychengmm/cagent/internal/server/serve"
+	"github.com/crazychengmm/cagent/internal/server/store"
 	"github.com/crazychengmm/cagent/internal/version"
 )
 
@@ -17,6 +27,12 @@ const (
 	exitOK    = 0
 	exitError = 1
 	exitUsage = 2
+)
+
+const (
+	caDirName      = "ca"
+	serverDBName   = "cagent-server.db"
+	adminTokenName = "admin_token"
 )
 
 const usageText = `cagent — 多角色运维 agent
@@ -100,18 +116,77 @@ func runServer(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitError
 	}
-
 	logger, err := logging.New(*logLevel, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitError
 	}
 
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		logger.Error("创建数据目录失败", "dir", cfg.DataDir, "error", err.Error())
+		return exitError
+	}
+
+	db, err := store.Open(context.Background(), filepath.Join(cfg.DataDir, serverDBName))
+	if err != nil {
+		logger.Error("打开数据库失败", "error", err.Error())
+		return exitError
+	}
+	defer db.Close()
+
+	// admin token：首启生成并提示一次位置，不打印内容（C-LOG-05）。
+	tokenPath := filepath.Join(cfg.DataDir, adminTokenName)
+	if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
+		if _, err := admin.EnsureAdminToken(cfg.DataDir); err != nil {
+			logger.Error("生成 admin token 失败", "error", err.Error())
+			return exitError
+		}
+		logger.Info("已生成 admin token，请妥善读取后配置 ctl", "path", tokenPath)
+	}
+	adminToken, err := admin.EnsureAdminToken(cfg.DataDir)
+	if err != nil {
+		logger.Error("读取 admin token 失败", "error", err.Error())
+		return exitError
+	}
+
+	caDir := filepath.Join(cfg.DataDir, caDirName)
+	rootCA, err := ca.LoadOrCreate(caDir)
+	if err != nil {
+		logger.Error("加载内置 CA 失败", "error", err.Error())
+		return exitError
+	}
+	serverCert, err := rootCA.EnsureServerCertificate(caDir, cfg.ServerCertHosts, config.ServerCertValidity)
+	if err != nil {
+		logger.Error("准备 server 证书失败", "error", err.Error())
+		return exitError
+	}
+
+	tokenService := enrollment.NewTokenService(db, cfg.EnrollmentTokenTTL.Std(), nil)
+	enrollService := enrollservice.New(db, tokenService, rootCA,
+		cfg.AgentCertValidity.Std(), nil, logger)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	logger.Info("server 启动",
 		"enrollment_listen", cfg.EnrollmentListen,
 		"control_listen", cfg.ControlListen,
 		"admin_listen", cfg.AdminListen,
 		"data_dir", cfg.DataDir)
-	logger.Warn("server gRPC 服务尚未实现，当前为骨架占位")
+	err = serve.Run(ctx, serve.Deps{
+		EnrollmentListen: cfg.EnrollmentListen,
+		ControlListen:    cfg.ControlListen,
+		AdminListen:      cfg.AdminListen,
+		EnrollService:    enrollService,
+		ServerCert:       *serverCert,
+		CAPEM:            rootCA.CACertPEM(),
+		AdminToken:       adminToken,
+		Store:            db,
+		Logger:           logger,
+	})
+	if err != nil {
+		logger.Error("server 运行失败", "error", err.Error())
+		return exitError
+	}
 	return exitOK
 }

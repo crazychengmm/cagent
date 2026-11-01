@@ -176,6 +176,17 @@
 - 问题：新版 grpc-go bufconn 无 Dialer()，改 DialContext 包装；另误把测试 import 写进 service.go 已即时纠正，均未进提交。
 - 自检：gofmt/vet/build、go test -race 全绿、交叉编译通过。
 
+### 2026-11-01 22:15 [NOTE] 任务 3.2 实现完成
+- 改动：
+  1) ca：SignAgentCSR 增 CN（3.1）；新增 IssueServerCertificate/EnsureServerCertificate（CA 签 ServerAuth 叶子证书，SAN=配置 server_cert_hosts，默认 localhost/127.0.0.1，私钥 0600，删文件重签轮换，有效期 10 年）。
+  2) config：ServerConfig 增 server_cert_hosts（默认 localhost/127.0.0.1，空条目校验），导出 ServerCertValidity。
+  3) tlsconfig：Enrollment（单向 TLS）、Control（RequireAndVerifyClientCert + CA pool + VerifyConnection 查 IsAgentCertificateActive 吊销，3s 超时，TLS1.2+）。
+  4) serve：三端口组装（enrollment/control/admin），net.Listen 早失败回滚已起端口，ctx 取消 GracefulStop 10s 超时强停；RegisterControl/RegisterAdmin 回调留给后续任务。
+  5) cli runServer 真实装配：data-dir 0700、Open SQLite、首启 admin token（只提示路径不打印值）、LoadOrCreate CA、server 证书、enroll service，信号驱动优雅退出。
+- 测试：ca servercert 5 用例；serve 真实 TCP TLS 矩阵 7 子用例（单向 TLS 注册、无证书/有效 mTLS/外来 CA/吊销/无 token/正确 token）；真实进程冒烟确认端口/权限位/SIGTERM。
+- 坑：① 库内 panic 辅助函数违反 G-PANIC-01，改回 error；② 未知服务在拦截器之前返回 Unimplemented，故用真实 EnrollmentService 挂 admin 端口测拦截链；③ bidi 流的建流错误在首个 Recv 才可见；④ 合法 server 配置现在会阻塞，cli 单测改为只测启动前失败路径。
+- 自检：10 包 go test -race 全绿，交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
