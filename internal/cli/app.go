@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,6 +14,10 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/crazychengmm/cagent/internal/agent/control"
+	"github.com/crazychengmm/cagent/internal/agent/identity"
+	"github.com/crazychengmm/cagent/internal/agent/register"
+	"github.com/crazychengmm/cagent/internal/agent/trust"
 	"github.com/crazychengmm/cagent/internal/config"
 	"github.com/crazychengmm/cagent/internal/logging"
 	"github.com/crazychengmm/cagent/internal/server/admin"
@@ -89,21 +94,103 @@ func runAgent(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitError
 	}
-
 	logger, err := logging.New(*logLevel, stderr)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitError
 	}
 
-	// 业务控制循环在后续任务接入；当前仅确认配置与日志可用。
-	// 不记录 enrollment_token（敏感信息，见 C-LOG-05）。
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	ident, code := loadOrEnroll(ctx, cfg, logger)
+	if code != exitOK {
+		return code
+	}
+
 	logger.Info("agent 启动",
+		"agent_id", ident.AgentID,
 		"control_address", cfg.ControlAddress,
 		"data_dir", cfg.DataDir,
 		"labels", cfg.Labels)
-	logger.Warn("agent 控制循环尚未实现，当前为骨架占位")
+
+	loop, err := control.New(control.Config{
+		Identity:          ident,
+		ServerAddr:        cfg.ControlAddress,
+		DataDir:           cfg.DataDir,
+		HeartbeatInterval: cfg.HeartbeatInterval.Std(),
+		Labels:            cfg.Labels,
+		Version:           version.Version,
+		Logger:            logger,
+	})
+	if err != nil {
+		logger.Error("构造控制循环失败", "error", err.Error())
+		return exitError
+	}
+	if err := loop.Run(ctx); err != nil {
+		logger.Error("控制循环异常退出", "error", err.Error())
+		return exitError
+	}
+	logger.Info("agent 已停止")
 	return exitOK
+}
+
+// loadOrEnroll 加载既有身份；无身份时用引导令牌与信任锚点完成首次注册并落盘。
+func loadOrEnroll(ctx context.Context, cfg *config.AgentConfig,
+	logger *slog.Logger) (*identity.Identity, int) {
+	if identity.Exists(cfg.DataDir) {
+		ident, err := identity.Load(cfg.DataDir)
+		if err != nil {
+			logger.Error("加载本地身份失败", "error", err.Error())
+			return nil, exitError
+		}
+		return ident, exitOK
+	}
+
+	logger.Info("未发现本地身份，开始首次注册")
+	if cfg.EnrollmentAddress == "" {
+		logger.Error("首次注册需要 enrollment_address")
+		return nil, exitError
+	}
+	if cfg.EnrollmentToken == "" {
+		logger.Error("首次注册需要 enrollment_token")
+		return nil, exitError
+	}
+	tlsCfg, err := trust.EnrollmentTLS(cfg.ServerCAFile, cfg.ServerCAFingerprint)
+	if err != nil {
+		logger.Error("加载 server 信任锚点失败（必须提供 CA 文件或指纹）", "error", err.Error())
+		return nil, exitError
+	}
+	hostname, err := os.Hostname()
+	if err != nil {
+		logger.Error("获取主机名失败", "error", err.Error())
+		return nil, exitError
+	}
+	key, err := identity.GenerateKey()
+	if err != nil {
+		logger.Error("生成私钥失败", "error", err.Error())
+		return nil, exitError
+	}
+
+	// 禁止记录 token 内容（C-LOG-05）。
+	result, err := register.Enroll(ctx, cfg.EnrollmentAddress, tlsCfg,
+		cfg.EnrollmentToken, hostname, cfg.Labels, key)
+	if err != nil {
+		logger.Error("注册失败", "server", cfg.EnrollmentAddress, "error", err.Error())
+		return nil, exitError
+	}
+	if err := identity.Save(cfg.DataDir, result.AgentID, key, result.CertPEM, result.CAPEM); err != nil {
+		logger.Error("持久化身份失败", "error", err.Error())
+		return nil, exitError
+	}
+	logger.Info("首次注册成功", "agent_id", result.AgentID)
+
+	ident, err := identity.Load(cfg.DataDir)
+	if err != nil {
+		logger.Error("回读身份失败", "error", err.Error())
+		return nil, exitError
+	}
+	return ident, exitOK
 }
 
 func runServer(args []string, stderr io.Writer) int {

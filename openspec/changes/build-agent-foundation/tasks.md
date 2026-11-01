@@ -16,12 +16,12 @@
 - [x] 3.1 实现 EnrollmentService 的 Enroll：单向 TLS + token 校验 + CSR 验签后签发证书、创建 agents 行（UUID/标签），注册失败写审计，附单测（→ Requirement: Enrollment token lifecycle, Certificate enrollment and persistent agent identity）
 - [x] 3.2 实现 server Control 端口 mTLS 配置与三端口启动组装：强制客户端证书、校验证书链与吊销状态（VerifyConnection 查 store），无证书/外来 CA/已吊销连接被拒；enrollment 单向 TLS、admin 单向 TLS+token 拦截器；cli server 子命令真实装配启动与信号优雅停止，附集成单测（→ Requirement: Mutual TLS enforcement, CLI authentication）
 - [x] 3.3 实现 server 侧 RenewCert：mTLS 对端证书 CN 识别 agent、校验 CSR 后重新签发，更新序列号与到期时间（旧证即时失效），吊销机拒绝续签；注册到 control 端口，附单测（→ Requirement: Automatic certificate renewal）
-- [ ] 3.3a （原 3.3 的 agent 侧部分，依赖 4.1 身份模块，并入 4.3）证书临期续签窗口调度、原子替换证书、失败告警但不断当前连接、替换后主动重连
+- [x] 3.3a （原 3.3 的 agent 侧部分，已并入 4.3）证书临期续签窗口调度、原子替换证书、失败告警但不断当前连接、替换后主动重连
 
 ## 4. Agent 身份与控制循环
 - [x] 4.1 实现 agent 身份模块：本地私钥与 CSR 生成、UUID 持久化、证书原子写入、状态目录 700 权限（→ Requirement: Certificate enrollment and persistent agent identity）
 - [x] 4.2 实现首次注册信任锚点：加载 --server-ca（PEM 或指纹 pin），无锚点直接失败且不提供 insecure 开关，锚点不匹配时 TLS 失败且不发送 token；register 客户端完成 Enroll 调用，附单测（→ Requirement: Server trust anchor at installation）
-- [ ] 4.3 实现控制循环：mTLS 主动出站长连接、断线指数退避自动重连、单条 Control 流多路复用收发（→ Requirement: Outbound persistent connection and reconnect）
+- [x] 4.3 实现控制循环：mTLS 主动出站长连接、断线指数退避自动重连、单条 Control 流多路复用收发；含 3.3a 证书临期续签调度、原子替换、失败告警不断连、替换后主动重连（→ Requirement: Outbound persistent connection and reconnect, Automatic certificate renewal）
 - [ ] 4.4 实现心跳与在线状态：agent 每 15s 上报 UUID/版本/标签全集；server 45s 超时标 offline、心跳恢复标 online 并刷新标签/版本，附状态判定单测（→ Requirement: Heartbeat and online status）
 
 ## 5. 远程任务执行

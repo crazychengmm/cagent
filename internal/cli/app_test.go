@@ -60,24 +60,18 @@ func TestRun_UnknownSubcommand(t *testing.T) {
 func TestRun_Agent(t *testing.T) {
 	t.Parallel()
 
-	t.Run("合法配置启动占位", func(t *testing.T) {
+	t.Run("无身份且缺少注册要素", func(t *testing.T) {
 		t.Parallel()
-		path := writeFile(t, "agent.yaml", `
-control_address: "h:9444"
-labels:
-  env: prod
-`)
+		// 成功路径（注册+mTLS 长连接）由 e2e 覆盖，这里只验证启动前失败路径。
+		path := writeFile(t, "agent.yaml",
+			"control_address: \"h:9444\"\ndata_dir: \""+t.TempDir()+"/data\"\n")
 		var stdout, stderr bytes.Buffer
 		code := Run([]string{"agent", "--config", path}, &stdout, &stderr)
-		if code != 0 {
-			t.Fatalf("退出码 = %d, stderr = %s", code, stderr.String())
+		if code != 1 {
+			t.Errorf("缺注册要素退出码 = %d, 期望 1", code)
 		}
-		if !strings.Contains(stderr.String(), `"msg":"agent 启动"`) ||
-			!strings.Contains(stderr.String(), `"control_address":"h:9444"`) {
-			t.Errorf("未输出结构化启动日志: %s", stderr.String())
-		}
-		if strings.Contains(stderr.String(), "enrollment_token") {
-			t.Error("日志不得包含 enrollment_token 字段（C-LOG-05）")
+		if !strings.Contains(stderr.String(), "首次注册需要") {
+			t.Errorf("应提示缺少注册要素: %s", stderr.String())
 		}
 	})
 

@@ -206,6 +206,13 @@
 - config 增 server_ca_fingerprint 字段。
 - 测试：真实 TLS listener 验锚点（正确/外来 CA/指纹对错/非法长度）；真实 TLS gRPC 注册成功并持久化身份、坏 token、锚点不匹配、缺锚点/空 token。全量绿、交叉编译通过。
 
+### 2026-11-01 23:10 [NOTE] 任务 4.3（含 3.3a）实现完成
+- internal/agent/control：clientTLS（身份证书+CA 锚点）；Loop（grpc.NewClient + waitReady 10s 超时，流断开指数退避 1s·2^n 封顶 30s + 0..20% 抖动，连接存活 >30s 重置退避，续签主动重连不计失败）；session（立即心跳 + ticker，无缓冲 msgCh + 带缓冲 errCh，sendMu 保护并发 Send，下行消息分发 JobHandler/UpgradeHandler goroutine）；renew（RenewCert→identity.ReplaceCertificate 原子换证→内存身份更新→errRenewed 触发重连；失败仅 WARN 保留连接，1 分钟后重试；RenewBefore 默认 30 天）。
+- cli runAgent 接线：无身份时 enrollment_address+token+锚点齐备才首次注册并落盘，缺要素 exit 1；日志不含 token（C-LOG-05）；信号驱动退出。
+- 测试：mTLS 假控制服务 5 组——心跳字段/首流断开重连与状态序列/临期自动续签（文件替换+二次连接）/dispatch-cancel-upgrade 三路分发/不可达持续重试且 ctx 取消返回 nil。
+- 坑：测试两处——①1h 证书配 59min RenewBefore 仍有 1min 等待，改 60min；②内存身份被原地更新导致新旧证书比较失效，改保存旧值快照；fake 里残留 range channel 空循环（会阻塞）已删。
+- 自检：14 包 race 全绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
