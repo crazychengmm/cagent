@@ -32,8 +32,11 @@ type AgentConfig struct {
 	ControlAddress string `yaml:"control_address"`
 	// EnrollmentToken 引导令牌，仅首次注册使用；已注册后可为空。
 	EnrollmentToken string `yaml:"enrollment_token"`
-	// ServerCAFile server CA 信任锚点 PEM 路径。
+	// ServerCAFile server CA 信任锚点 PEM 路径（与 ServerCAFingerprint 二选一，
+	// 仅首次注册前必需；注册成功后 CA 随身份持久化）。
 	ServerCAFile string `yaml:"server_ca_file"`
+	// ServerCAFingerprint 服务器证书 SHA256 指纹（十六进制），与文件锚点二选一。
+	ServerCAFingerprint string `yaml:"server_ca_fingerprint"`
 	// DataDir 身份、证书、旧版本副本与升级状态目录。
 	DataDir string `yaml:"data_dir"`
 	// Labels 静态标签全集，随心跳上报。

@@ -21,6 +21,8 @@ func TestLoadAgentConfig_DefaultsAndOverrides(t *testing.T) {
 
 	path := writeTempConfig(t, `
 control_address: "agent.example:9444"
+server_ca_file: "/tmp/ca.crt"
+server_ca_fingerprint: "aa:bb"
 labels:
   env: prod
   role: db
@@ -47,6 +49,9 @@ labels:
 	}
 	if cfg.Labels["env"] != "prod" || cfg.Labels["role"] != "db" {
 		t.Errorf("Labels = %v, 期望 env=prod,role=db", cfg.Labels)
+	}
+	if cfg.ServerCAFile != "/tmp/ca.crt" || cfg.ServerCAFingerprint != "aa:bb" {
+		t.Errorf("信任锚点字段未加载: file=%q fp=%q", cfg.ServerCAFile, cfg.ServerCAFingerprint)
 	}
 }
 

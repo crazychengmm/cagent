@@ -200,6 +200,12 @@
 - internal/agent/identity：GenerateKey(P-256)/MakeCSR/Exists/Save/Load/ReplaceCertificate；文件 identity/agent.key/agent.crt/ca.crt，目录 0700、文件 0600，writeAtomic（tmp+rename）；Load 校验私钥与证书 PEM；ReplaceCertificate 拒绝非法证书。
 - 测试：round-trip、权限位、材料不完整拒绝、缺失文件、CSR 自签、原子换证共 6 组用例；全量 race 绿、交叉编译通过。
 
+### 2026-11-01 22:50 [NOTE] 任务 4.2 实现完成
+- internal/agent/trust：EnrollmentTLS 只接受 PEM 文件或 SHA256 指纹（支持冒号格式），无锚点返回 ErrNoAnchor，指纹模式 VerifyConnection 比对整张服务器证书；代码中不存在 insecure 开关；MTLSConfig 叠加客户端证书且不改基础配置。
+- internal/agent/register：Enroll（锚点 TLS + token + CSR），握手层失败时 token 不离开本机；错误映射 PermissionDenied/InvalidArgument。
+- config 增 server_ca_fingerprint 字段。
+- 测试：真实 TLS listener 验锚点（正确/外来 CA/指纹对错/非法长度）；真实 TLS gRPC 注册成功并持久化身份、坏 token、锚点不匹配、缺锚点/空 token。全量绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
