@@ -155,6 +155,11 @@
 - 自检：gofmt/vet/build、go test -race 全绿；关键验证——CGO_ENABLED=0 双架构（amd64/arm64）静态链接成功，SQLite 无 cgo 依赖。
 - 问题：UpdateJobState 占位参数顺序一度写乱并留死代码，整文件重写修正（未进提交）；三次手写 struct/const 空格对齐被 gofmt 拦截，已统一「写完先 gofmt -w」。
 
+### 2026-11-01 21:58 [NOTE] 任务 2.2 实现完成
+- 改动：internal/server/ca（LoadOrCreate：首启 ECDSA P-256 根 + 自签 CA，key 0600/目录 0700/cert 0644；NewSerial 128 位；SignAgentCSR 校验 CSR 自签后签发 ClientAuth 证书，NotBefore 提前 1 分钟抗时钟偏差；VerifyAgentCert 链校验）；agents 表加 revoked_at 列（零部署期直接演进 schemaV1，未另起 v2 迁移）。
+- 吊销：store.RevokeAgent / IsAgentCertificateActive(serial)（存在且未吊销）；RecordHeartbeat 加 revoked_at IS NULL 条件，吊销机不接受心跳。
+- 自检：gofmt/vet/build、ca+store go test -race 全绿；全量回归 + 双架构静态交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

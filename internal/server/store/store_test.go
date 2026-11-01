@@ -239,6 +239,42 @@ func TestAuditLogs(t *testing.T) {
 	}
 }
 
+func TestAgentCertificateRevocation(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s := openTestStore(t)
+	now := time.Now().UTC()
+	a := Agent{
+		AgentID: "ag-9", Hostname: "h", CertificateSerial: "sn-9",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.InsertAgent(ctx, a); err != nil {
+		t.Fatalf("InsertAgent: %v", err)
+	}
+
+	active, err := s.IsAgentCertificateActive(ctx, "sn-9")
+	if err != nil || !active {
+		t.Errorf("签发后证书应有效，active=%v err=%v", active, err)
+	}
+	active, err = s.IsAgentCertificateActive(ctx, "unknown-sn")
+	if err != nil || active {
+		t.Errorf("未知序列号应无效，active=%v err=%v", active, err)
+	}
+
+	if ok, _ := s.RevokeAgent(ctx, "ag-9", now); !ok {
+		t.Fatal("吊销应成功")
+	}
+	active, err = s.IsAgentCertificateActive(ctx, "sn-9")
+	if err != nil || active {
+		t.Errorf("吊销后证书应无效，active=%v err=%v", active, err)
+	}
+	// 吊销后的 agent 不应再接受心跳。
+	if err := s.RecordHeartbeat(ctx, "ag-9", "1", map[string]string{}, now); !errors.Is(err, ErrNotFound) {
+		t.Errorf("吊销 agent 的心跳应被拒（ErrNotFound），实际 %v", err)
+	}
+}
+
 func TestReleases(t *testing.T) {
 	t.Parallel()
 

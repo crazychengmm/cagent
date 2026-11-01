@@ -15,6 +15,12 @@ const (
 	StatusOffline = "offline"
 )
 
+// agentColumns 必须与 scanAgent 的扫描顺序一致。
+const agentColumns = `agent_id, hostname, labels, version, status, certificate_serial,
+       cert_not_after, last_heartbeat_at, created_at, updated_at, revoked_at`
+
+const agentSelect = `SELECT ` + agentColumns + ` FROM agents`
+
 // ErrNotFound 表示按主键查询无记录。
 var ErrNotFound = errors.New("记录不存在")
 
@@ -28,6 +34,7 @@ type Agent struct {
 	CertificateSerial string
 	CertNotAfter      *time.Time
 	LastHeartbeatAt   *time.Time
+	RevokedAt         *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -53,19 +60,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 
 // GetAgent 按 UUID 查询；不存在返回 ErrNotFound。
 func (s *Store) GetAgent(ctx context.Context, agentID string) (*Agent, error) {
-	row := s.db.QueryRowContext(ctx, `
-SELECT agent_id, hostname, labels, version, status, certificate_serial,
-       cert_not_after, last_heartbeat_at, created_at, updated_at
-FROM agents WHERE agent_id = ?`, agentID)
+	row := s.db.QueryRowContext(ctx, agentSelect+` WHERE agent_id = ?`, agentID)
 	return scanAgent(row)
 }
 
 // ListAgents 返回全部 agent，按最近心跳时间倒序（从未心跳的排最后）。
 func (s *Store) ListAgents(ctx context.Context) ([]Agent, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT agent_id, hostname, labels, version, status, certificate_serial,
-       cert_not_after, last_heartbeat_at, created_at, updated_at
-FROM agents ORDER BY last_heartbeat_at IS NULL, last_heartbeat_at DESC`)
+	rows, err := s.db.QueryContext(ctx,
+		agentSelect+` ORDER BY last_heartbeat_at IS NULL, last_heartbeat_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("列出 agents: %w", err)
 	}
@@ -92,7 +94,7 @@ func (s *Store) RecordHeartbeat(ctx context.Context, agentID, version string,
 	res, err := s.db.ExecContext(ctx, `
 UPDATE agents
 SET version = ?, labels = ?, status = ?, last_heartbeat_at = ?, updated_at = ?
-WHERE agent_id = ?`,
+WHERE agent_id = ? AND revoked_at IS NULL`,
 		version, string(labelsJSON), StatusOnline, formatTime(at), formatTime(at), agentID)
 	if err != nil {
 		return fmt.Errorf("更新心跳 %s: %w", agentID, err)
@@ -119,10 +121,7 @@ func (s *Store) SetAgentStatus(ctx context.Context, agentID, status string, at t
 
 // ListAgentsOlderThan 返回最后心跳早于 cutoff 的 online agent（离线扫描用）。
 func (s *Store) ListAgentsOlderThan(ctx context.Context, cutoff time.Time) ([]Agent, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT agent_id, hostname, labels, version, status, certificate_serial,
-       cert_not_after, last_heartbeat_at, created_at, updated_at
-FROM agents
+	rows, err := s.db.QueryContext(ctx, agentSelect+`
 WHERE status = ? AND last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?`,
 		StatusOnline, formatTime(cutoff))
 	if err != nil {
@@ -141,6 +140,34 @@ WHERE status = ? AND last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?`,
 	return agents, rows.Err()
 }
 
+// RevokeAgent 吊销 agent 身份；返回 false 表示不存在或已吊销。
+func (s *Store) RevokeAgent(ctx context.Context, agentID string, at time.Time) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE agents SET revoked_at = ?, updated_at = ? WHERE agent_id = ? AND revoked_at IS NULL`,
+		formatTime(at), formatTime(at), agentID)
+	if err != nil {
+		return false, fmt.Errorf("吊销 agent %s: %w", agentID, err)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// IsAgentCertificateActive 判断证书序列号是否属于未吊销的已注册 agent。
+func (s *Store) IsAgentCertificateActive(ctx context.Context, serial string) (bool, error) {
+	var active int
+	err := s.db.QueryRowContext(ctx, `
+SELECT 1 FROM agents
+WHERE certificate_serial = ? AND certificate_serial <> '' AND revoked_at IS NULL`,
+		serial).Scan(&active)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("检查证书状态: %w", err)
+	}
+	return true, nil
+}
+
 // rowScanner 同时兼容 *sql.Row 与 *sql.Rows。
 type rowScanner interface {
 	Scan(dest ...any) error
@@ -153,11 +180,12 @@ func scanAgent(row rowScanner) (*Agent, error) {
 		serial        sql.NullString
 		certNotAfter  sql.NullString
 		lastHeartbeat sql.NullString
+		revokedAt     sql.NullString
 		createdAt     string
 		updatedAt     string
 	)
 	err := row.Scan(&a.AgentID, &a.Hostname, &labelsJSON, &a.Version, &a.Status, &serial,
-		&certNotAfter, &lastHeartbeat, &createdAt, &updatedAt)
+		&certNotAfter, &lastHeartbeat, &createdAt, &updatedAt, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -173,6 +201,9 @@ func scanAgent(row rowScanner) (*Agent, error) {
 		return nil, err
 	}
 	if a.LastHeartbeatAt, err = parseOptionalTime(lastHeartbeat); err != nil {
+		return nil, err
+	}
+	if a.RevokedAt, err = parseOptionalTime(revokedAt); err != nil {
 		return nil, err
 	}
 	if a.CreatedAt, err = time.Parse(time.RFC3339Nano, createdAt); err != nil {

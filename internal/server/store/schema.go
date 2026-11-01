@@ -12,6 +12,7 @@ CREATE TABLE agents (
     certificate_serial TEXT NOT NULL DEFAULT '',
     cert_not_after     TEXT,
     last_heartbeat_at  TEXT,
+    revoked_at         TEXT,
     created_at         TEXT NOT NULL,
     updated_at         TEXT NOT NULL
 );
