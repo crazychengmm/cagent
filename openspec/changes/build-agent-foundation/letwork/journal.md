@@ -196,6 +196,10 @@
 - 测试：纯单测 7 例（含无 peer/非 TLS/未知 agent/吊销/坏 CSR）+ serve 真实 mTLS 续签链路（续签后旧证书新连接被拒 Unavailable、新证书 Unimplemented 可达）。
 - 自检：10 包 race 全绿、交叉编译通过。
 
+### 2026-11-01 22:40 [NOTE] 任务 4.1 实现完成
+- internal/agent/identity：GenerateKey(P-256)/MakeCSR/Exists/Save/Load/ReplaceCertificate；文件 identity/agent.key/agent.crt/ca.crt，目录 0700、文件 0600，writeAtomic（tmp+rename）；Load 校验私钥与证书 PEM；ReplaceCertificate 拒绝非法证书。
+- 测试：round-trip、权限位、材料不完整拒绝、缺失文件、CSR 自签、原子换证共 6 组用例；全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

@@ -19,7 +19,7 @@
 - [ ] 3.3a （原 3.3 的 agent 侧部分，依赖 4.1 身份模块，并入 4.3）证书临期续签窗口调度、原子替换证书、失败告警但不断当前连接、替换后主动重连
 
 ## 4. Agent 身份与控制循环
-- [ ] 4.1 实现 agent 身份模块：本地私钥与 CSR 生成、UUID 持久化到 /var/lib/cagent/identity、证书原子写入、状态目录 700 权限（→ Requirement: Certificate enrollment and persistent agent identity）
+- [x] 4.1 实现 agent 身份模块：本地私钥与 CSR 生成、UUID 持久化、证书原子写入、状态目录 700 权限（→ Requirement: Certificate enrollment and persistent agent identity）
 - [ ] 4.2 实现首次注册信任锚点：加载 --server-ca（PEM 或指纹 pin），无锚点直接失败且不提供 insecure 开关，锚点不匹配时 TLS 失败且不发送 token，附单测（→ Requirement: Server trust anchor at installation）
 - [ ] 4.3 实现控制循环：mTLS 主动出站长连接、断线指数退避自动重连、单条 Control 流多路复用收发（→ Requirement: Outbound persistent connection and reconnect）
 - [ ] 4.4 实现心跳与在线状态：agent 每 15s 上报 UUID/版本/标签全集；server 45s 超时标 offline、心跳恢复标 online 并刷新标签/版本，附状态判定单测（→ Requirement: Heartbeat and online status）
