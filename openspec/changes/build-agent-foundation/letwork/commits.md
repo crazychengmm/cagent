@@ -17,3 +17,4 @@
 | 3.1 | 1e39064 | feat(enroll): 实现 EnrollmentService.Enroll 注册受理 | internal/server/enrollservice/、ca |
 | 3.2 | e58e515 | feat(server): mTLS 控制端口与三端口启动组装 | internal/server/{tlsconfig,serve,ca}、cli、config |
 | 3.3 | 74b0594 | feat(control): 实现 mTLS 证书续签 RenewCert | internal/server/controlservice/、store、serve |
+| 4.1 | eef5652 | feat(agent): 本地身份模块 | internal/agent/identity/ |
