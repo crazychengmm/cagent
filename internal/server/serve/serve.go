@@ -39,7 +39,9 @@ type Deps struct {
 
 	// HeartbeatTimeout 超过该时长无心跳的 online agent 被扫描器置 offline。
 	HeartbeatTimeout time.Duration
-	// SweepInterval 离线扫描周期，<=0 取默认 10s。
+	// QueueTTL pending job 超过该时长未投递被置 expired；<=0 不启动过期扫描。
+	QueueTTL time.Duration
+	// SweepInterval 离线/过期扫描周期，<=0 取默认 10s。
 	SweepInterval time.Duration
 
 	// RegisterControl/RegisterAdmin 在对应 grpc.Server 上挂载业务服务，
@@ -105,6 +107,10 @@ func Run(ctx context.Context, d Deps) error {
 	if d.HeartbeatTimeout > 0 {
 		go controlservice.RunOfflineSweeper(ctx, d.Store,
 			d.HeartbeatTimeout, d.SweepInterval, d.Logger)
+	}
+	if d.QueueTTL > 0 {
+		go controlservice.RunQueueExpirer(ctx, d.Store,
+			d.QueueTTL, d.SweepInterval, d.Logger)
 	}
 
 	<-ctx.Done()

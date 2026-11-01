@@ -277,6 +277,7 @@ func runServer(args []string, stderr io.Writer) int {
 		Store:            db,
 		Logger:           logger,
 		HeartbeatTimeout: cfg.HeartbeatTimeout.Std(),
+		QueueTTL:         cfg.QueueTTL.Std(),
 		SweepInterval:    10 * time.Second,
 		RegisterControl: func(s *grpc.Server) {
 			pb.RegisterControlServiceServer(s, controlService)

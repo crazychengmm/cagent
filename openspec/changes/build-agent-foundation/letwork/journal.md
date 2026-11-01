@@ -246,6 +246,13 @@
 - 测试 5 组：选择器表驱动、2 机匹配（在线机收到/离线 pending）、空选择器、零匹配、校验失败。
 - 自检：全量 race 绿、交叉编译通过。
 
+### 2026-11-02 00:50 [NOTE] 任务 5.6 实现完成
+- controlservice：Control 建流后 drainPendingJobs（pending 正序补发 JobDispatch，单次 1000 上限，中断保留 pending；旧流被 cancel 防重复）；expirer 周期 ExpireOnce（只动超 24h 的 pending）。
+- store.ExpirePendingJobsBefore：UPDATE pending AND created_at<cutoff → expired。
+- serve/cli：QueueTTL + 10s 扫描周期启动 expirer。
+- 测试：store 过期扫描；真实 mTLS+Loop 重连补投 2 个 pending；ExpireOnce 只过 stale pending。
+- 自检：全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

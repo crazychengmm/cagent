@@ -88,6 +88,8 @@ func (s *Service) Control(stream pb.ControlService_ControlServer) error {
 
 	peerCert := peerCertificate(stream.Context())
 	s.logger.Info("agent 控制流建立", "agent_id", agentID)
+	// 重连后先补投离线期间积压的 pending job（幂等由 agent 端保证）。
+	s.drainPendingJobs(ctx, session)
 	for {
 		msg, err := stream.Recv()
 		if err != nil {

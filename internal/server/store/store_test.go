@@ -239,6 +239,44 @@ func TestAuditLogs(t *testing.T) {
 	}
 }
 
+func TestExpirePendingJobsBefore(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	s := openTestStore(t)
+	newTestAgent(t, s, "ag-ex")
+	now := time.Now().UTC()
+	mk := func(id string, status string, age time.Duration) {
+		j := Job{
+			JobID: id, AgentID: "ag-ex", Kind: KindCommand, Command: "x",
+			Status: status, TimeoutSeconds: 60, CreatedAt: now.Add(-age),
+		}
+		if err := s.CreateJob(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("stale", JobStatusPending, 25*time.Hour)
+	mk("fresh", JobStatusPending, time.Hour)
+	mk("run", JobStatusRunning, 25*time.Hour)
+
+	n, err := s.ExpirePendingJobsBefore(ctx, now.Add(-24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("过期数 = %d, 期望 1", n)
+	}
+	if got, _ := s.GetJob(ctx, "stale"); got.Status != JobStatusExpired {
+		t.Errorf("stale = %s", got.Status)
+	}
+	if got, _ := s.GetJob(ctx, "fresh"); got.Status != JobStatusPending {
+		t.Errorf("fresh = %s", got.Status)
+	}
+	if got, _ := s.GetJob(ctx, "run"); got.Status != JobStatusRunning {
+		t.Errorf("running 不应被动到: %s", got.Status)
+	}
+}
+
 func TestAgentCertificateRevocation(t *testing.T) {
 	t.Parallel()
 

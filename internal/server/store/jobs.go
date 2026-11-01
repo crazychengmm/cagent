@@ -233,6 +233,22 @@ SELECT seq, stream, data FROM job_output WHERE job_id = ? ORDER BY seq`, jobID)
 	return chunks, rows.Err()
 }
 
+// ExpirePendingJobsBefore 把创建时间早于 cutoff 的 pending job 置为 expired，
+// 返回受影响行数。时间列是 UTC RFC3339 文本，字典序与时间序一致。
+func (s *Store) ExpirePendingJobsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := s.db.ExecContext(ctx, `
+UPDATE jobs
+SET status = ?, finished_at = ?, updated_at = ?
+WHERE status = ? AND created_at < ?`,
+		JobStatusExpired, formatTime(time.Now().UTC()), formatTime(time.Now().UTC()),
+		JobStatusPending, formatTime(cutoff))
+	if err != nil {
+		return 0, fmt.Errorf("过期 pending jobs: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
 // SumJobOutputSize 返回已保存输出的总字节数（截断判定用）。
 func (s *Store) SumJobOutputSize(ctx context.Context, jobID string) (int64, error) {
 	var size sql.NullInt64
