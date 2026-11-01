@@ -3,10 +3,8 @@
 package executor
 
 import (
-	"bufio"
 	"context"
 	"errors"
-	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -96,16 +94,10 @@ func (e *LocalExecutor) run(parent context.Context, spec Spec, events chan<- Eve
 	// 独立进程组：杀掉负 PGID 可连同 shell 派生的子进程一起终止。
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		emitFailed(events, ResultFailed, -1, "创建 stdout 管道失败: "+err.Error())
-		return
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		emitFailed(events, ResultFailed, -1, "创建 stderr 管道失败: "+err.Error())
-		return
-	}
+	// 用 cmd.Stdout/Stderr 挂 writer：Wait 会等待 exec 内部 copy 完成，
+	// 避免 StdoutPipe + 手动读时「Wait 先关管道、极快命令丢输出」的竞态。
+	cmd.Stdout = &eventWriter{stream: StreamStdout, events: events, ctx: timedCtx}
+	cmd.Stderr = &eventWriter{stream: StreamStderr, events: events, ctx: timedCtx}
 
 	cmd.Cancel = func() error {
 		// PGID 即组首（shell）PID；负 PID 杀整个组，连带派生的子进程。
@@ -124,14 +116,9 @@ func (e *LocalExecutor) run(parent context.Context, spec Spec, events chan<- Eve
 	}
 	events <- Event{Kind: EventStarted}
 
-	pipeDone := make(chan struct{}, 2)
-	go pumpOutput(stdout, StreamStdout, events, timedCtx, pipeDone)
-	go pumpOutput(stderr, StreamStderr, events, timedCtx, pipeDone)
-
+	// Wait 在命令退出且 stdout/stderr copy goroutine 完成后才返回，
+	// 因此返回时全部输出事件已入队。
 	waitErr := cmd.Wait()
-	// 等待两个 reader 结束，保证 Finished 之前全部输出事件已入队。
-	<-pipeDone
-	<-pipeDone
 
 	result, exitCode := classify(waitErr, parent, timedCtx)
 	events <- Event{
@@ -155,27 +142,30 @@ func emitFailed(events chan<- Event, result ResultKind, exitCode int, message st
 	events <- Event{Kind: EventFinished, Result: result, ExitCode: exitCode, Message: message}
 }
 
-// pumpOutput 按原始块（最大 64KB）把输出转成事件，不改变字节内容。
-func pumpOutput(r io.Reader, stream string, events chan<- Event,
-	ctx context.Context, done chan<- struct{}) {
-	defer func() { done <- struct{}{} }()
+// eventWriter 把进程输出按不超过 64KB 的原始块转成事件，不改变字节内容。
+type eventWriter struct {
+	stream string
+	events chan<- Event
+	ctx    context.Context
+}
 
-	reader := bufio.NewReaderSize(r, outputBufferSize)
-	buf := make([]byte, outputBufferSize)
-	for {
-		n, err := reader.Read(buf)
-		if n > 0 {
-			chunk := append([]byte(nil), buf[:n]...)
-			select {
-			case events <- Event{Kind: EventOutput, Stream: stream, Data: chunk}:
-			case <-ctx.Done():
-				return
-			}
+func (w *eventWriter) Write(p []byte) (int, error) {
+	total := len(p)
+	for len(p) > 0 {
+		n := len(p)
+		if n > outputBufferSize {
+			n = outputBufferSize
 		}
-		if err != nil {
-			return
+		chunk := append([]byte(nil), p[:n]...)
+		select {
+		case w.events <- Event{Kind: EventOutput, Stream: w.stream, Data: chunk}:
+		case <-w.ctx.Done():
+			// 取消/超时：放弃剩余输出，WaitDelay 保证进程被回收。
+			return total, nil
 		}
+		p = p[n:]
 	}
+	return total, nil
 }
 
 func classify(waitErr error, parent, timedCtx context.Context) (ResultKind, int) {

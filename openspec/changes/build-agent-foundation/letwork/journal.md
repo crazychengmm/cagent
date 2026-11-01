@@ -225,6 +225,12 @@
 - 坑：① cmd.Cancel 必须配合 CommandContext（启动即报错）；② 按行 Scanner 给无换行尾块补 \n 改变了输出，改原始块读；③ macOS t.TempDir 经 /private 符号链接，pwd 对比先 EvalSymlinks。
 - 自检：全量 race 绿、交叉编译通过。
 
+### 2026-11-02 00:05 [NOTE] 任务 5.2 实现完成
+- internal/agent/jobworker：Manager（N worker、1024 队列、running map+tracked 取消句柄）；任务 ctx 绑定 Manager rootCtx（控制连接断开不杀任务）；排队中取消标记 canceled、worker 取出直接回 CANCELED 不执行；在跑重复 jobID 忽略；事件映射 proto Started/Output/Finished（Result 枚举映射、默认超时 5m）；回传失败仅告警（结果重传归 5.4）。
+- 测试 6 组：5 任务全完成有输出、并发 2 时序窗口（0.45-0.85s）、取消在跑 CANCELED、排队取消不执行 q2 且 q1 成功、1s 超时 TIMEOUT、重复派发仅一个 Started；-count=3 稳定。
+- 【重要 PROBLEM】StdoutPipe+手动读存在竞态：极快命令（builtin printf）+高负载（全包 -race）时 Wait 可能先关闭管道导致输出丢失（偶发 ja 输出事件缺失）；改为 cmd.Stdout/Stderr 挂 eventWriter，Wait 等待内部 copy 完成，竞态消除，同时删除自写 reader 与 pipeDone。
+- 自检：16 包 race 全绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

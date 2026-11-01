@@ -21,3 +21,4 @@
 | 4.2 | 49c75ff | feat(agent): 注册信任锚点与 Enroll 客户端 | internal/agent/{trust,register}、config |
 | 4.3+3.3a | 05acaf6 | feat(agent): mTLS 控制循环、退避重连与自动续签 | internal/agent/control、cli |
 | 4.4 | fc4ffe0 | feat(control): 心跳落库、在线状态与离线扫描 | internal/server/controlservice、serve |
+| 5.1 | 83bef40 | feat(agent): shell 执行器（进程组、超时/取消杀组、输出事件流） | internal/agent/executor |
