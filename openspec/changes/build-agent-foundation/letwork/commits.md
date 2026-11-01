@@ -11,3 +11,4 @@
 | 1.3 | b576780 | feat(config): 实现 agent/server YAML 配置与校验 | internal/config/、go.mod/sum（yaml.v3） |
 | 1.4 | 7103fe8 | feat(cli): 接入子命令分发与 slog 结构化日志 | cmd/cagent、internal/cli、internal/logging |
 | 2.1 | 8991f3a | feat(store): SQLite WAL 六表迁移与 CRUD | internal/server/store/、go.mod/sum（modernc.org/sqlite） |
+| 2.2 | a369230 | feat(ca): 内置 ECDSA P-256 CA 与证书吊销状态检查 | internal/server/ca/、store schema/agents |

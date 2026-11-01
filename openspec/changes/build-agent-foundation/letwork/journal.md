@@ -160,6 +160,11 @@
 - 吊销：store.RevokeAgent / IsAgentCertificateActive(serial)（存在且未吊销）；RecordHeartbeat 加 revoked_at IS NULL 条件，吊销机不接受心跳。
 - 自检：gofmt/vet/build、ca+store go test -race 全绿；全量回归 + 双架构静态交叉编译通过。
 
+### 2026-11-01 22:05 [NOTE] 任务 2.3 实现完成
+- 改动：internal/server/enrollment/token.go TokenService（Create：cagt_ 前缀 + 32 字节 base64url，et_ 随机 ID；Validate：无效/吊销/过期三哨兵错误；可复用不消耗；List/Revoke/MarkUsed）；时钟可注入便于过期测试。
+- 自检：gofmt/vet/build、go test -race 全绿，全量回归 + 交叉编译通过。
+- 问题：token.go 首次 Write 写入了签名写错（time.Time 误代 time.Duration）且带占位代码的半成品，立即整文件重写，未进入提交；根因是一次想写太多，后续一个文件一次写完整再跑门禁。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
