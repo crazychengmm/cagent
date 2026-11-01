@@ -300,3 +300,7 @@
 - controlservice drain 按 kind 分发（messageForPendingJob：upgrade→UpgradeCommand，command→JobDispatch）。
 - 测试：management 3 组（匹配创建+在线字段+离线 pending+审计、未发布、零匹配）；drain 升级补投 mTLS 集成（字段完整）。
 - 自检：21 包 race 全绿、交叉编译通过。
+
+### 2026-11-02 03:05 [NOTE] 任务 6.6 实现完成
+- jobworker.Manager.ActiveCount（排队+在跑，不含缓存）；upgrade.WaitForIdle（立即检查+100ms 轮询，超时 ErrJobsRunning，不取消任何任务；ctx 可取消）。
+- 测试 4 组：已空闲立即返回、先忙后闲、超时且任务不受影响、ctx 取消。全量 race 绿。

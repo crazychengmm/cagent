@@ -119,6 +119,13 @@ func (m *Manager) Wait() {
 	m.wg.Wait()
 }
 
+// ActiveCount 返回排队/在跑任务数（升级 grace 判定用，不含已完成缓存）。
+func (m *Manager) ActiveCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.running)
+}
+
 // OnDispatch 实现 control.JobHandler：登记并入队。
 // 控制连接断开不影响任务生命周期（绑定 Manager 的 rootCtx）。
 func (m *Manager) OnDispatch(_ context.Context, sender control.Sender, d *pb.JobDispatch) {
