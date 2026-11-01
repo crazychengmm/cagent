@@ -44,11 +44,11 @@
 - [x] 6.8 实现 guard 系统集成：state 文件跨进程交接、SystemInstaller（复制+rename 替换/备份/回滚/清理）、Setsid detach 独立 guard（agent --guard-mode）做文件健康探测+回滚重启+Flush 上报、新版本首连写 healthy 标记；server HandleUpgradeEvent 推进 upgrade job（→ Requirement: Guarded restart with health-gated rollback）
 
 ## 7. 管理 CLI（cagent ctl）
-- [ ] 7.1 实现 ctl 凭据加载：配置文件/环境变量读取管理地址与 admin token，缺失或错误时在发请求前失败并提示（→ Requirement: CLI authentication）
-- [ ] 7.2 实现 token create --ttl（默认 168h，明文仅创建时输出一次）、token list（不含明文）、token revoke <id>（→ Requirement: Token management commands）
-- [ ] 7.3 实现 agent list 与 agent show <id>：输出 UUID、标签、版本、在线状态、最后心跳时间（→ Requirement: Agent inventory commands）
-- [ ] 7.4 实现 run --selector --cmd [--timeout]（打印 job 标识）、job list、job show <id>（状态/退出码/输出/truncated）、job cancel <id>（→ Requirement: Job operation commands）
-- [ ] 7.5 实现 release sign/publish/list 与 upgrade --release --selector（默认不携带 allow-downgrade）（→ Requirement: Release and rollout commands）
+- [x] 7.1 实现 ctl 凭据加载：ctl.Config（文件+环境变量覆盖，缺地址/token 发请求前失败）、TLS+unary/stream token 拦截器、--config 解析、Run 分发骨架（→ Requirement: CLI authentication）
+- [x] 7.2 实现 token create --ttl（默认 168h，明文仅一次）/list（不明文）/revoke（→ Requirement: Token management commands）
+- [x] 7.3 实现 agent list/show：UUID/主机名/状态/版本/标签/心跳/证书到期，未知名 NotFound
+- [x] 7.4 实现 run（多 --selector AND）/job list/show（含输出）/cancel（在线下发，离线报错），management RPC 接 dispatch.Service（→ Requirement: Job operation commands）
+- [x] 7.5 实现 release package/sign/publish/list 与 upgrade（--release/--selector/--allow-downgrade 默认 false），Makefile package 目标（→ Requirement: Release and rollout commands）
 
 ## 8. 安装与 systemd
 - [ ] 8.1 实现标准文件布局：路径常量（/usr/local/bin/cagent、/etc/cagent/config.yaml、/var/lib/cagent/ 700、releases/ 旧版副本目录）与首启目录初始化（→ Requirement: Standard filesystem layout）

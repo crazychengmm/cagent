@@ -11,7 +11,7 @@ LDFLAGS  := -s -w \
 
 DIST := dist
 
-.PHONY: all build build-linux proto fmt vet test test-race clean
+.PHONY: all build build-linux proto fmt vet test test-race package clean
 
 all: build
 
@@ -45,6 +45,14 @@ test:
 
 test-race:
 	go test -race ./...
+
+# package：用本机 cagent 把 linux/amd64 产物打成签名前的 .pkg（再用 ctl release sign）。
+package: build-linux build
+	mkdir -p $(DIST)
+	./$(DIST)/$(BINARY) ctl release package \
+		--binary $(DIST)/$(BINARY)-linux-amd64 \
+		--version $(VERSION) \
+		--out $(DIST)/$(BINARY)-$(VERSION).pkg
 
 clean:
 	rm -rf $(DIST)

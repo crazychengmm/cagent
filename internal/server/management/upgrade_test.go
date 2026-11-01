@@ -56,7 +56,7 @@ func newManagementOnline(t *testing.T, pub ed25519.PublicKey, online OnlineDispa
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	svc, err := New(db, t.TempDir(), pub, online, time.Now,
+	svc, err := New(db, t.TempDir(), pub, online, nil, nil, time.Now,
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)

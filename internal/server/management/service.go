@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/crazychengmm/cagent/internal/release"
+	"github.com/crazychengmm/cagent/internal/server/dispatch"
 	"github.com/crazychengmm/cagent/internal/server/store"
 	pb "github.com/crazychengmm/cagent/proto/cagent/v1"
 )
@@ -36,6 +37,16 @@ type OnlineDispatcher interface {
 	SendToAgent(agentID string, msg *pb.ServerMessage) error
 }
 
+// JobCreator 创建任务（由 dispatch.Service 满足）。
+type JobCreator interface {
+	CreateJobs(ctx context.Context, req dispatch.CreateRequest) (*dispatch.CreateResult, error)
+}
+
+// TokenService 管理 enrollment token。
+type TokenService interface {
+	CreateToken(ctx context.Context, description, createdBy string, ttl time.Duration) (string, *store.EnrollmentToken, error)
+}
+
 // Service 是 ManagementService 的实现。
 type Service struct {
 	pb.UnimplementedManagementServiceServer
@@ -44,13 +55,16 @@ type Service struct {
 	packageDir string
 	publicKey  ed25519.PublicKey // 可空：未配置时 server 不强制验签（由 agent 强制）
 	online     OnlineDispatcher
+	tokens     TokenService
+	jobCreator JobCreator
 	now        func() time.Time
 	logger     *slog.Logger
 }
 
 // New 构造管理服务；包文件存 dataDir/releases。
 func New(s *store.Store, dataDir string, publicKey ed25519.PublicKey,
-	online OnlineDispatcher, now func() time.Time, logger *slog.Logger) (*Service, error) {
+	online OnlineDispatcher, tokens TokenService, jobs JobCreator,
+	now func() time.Time, logger *slog.Logger) (*Service, error) {
 	packageDir := filepath.Join(dataDir, ReleaseDirName)
 	if err := os.MkdirAll(packageDir, 0o700); err != nil {
 		return nil, err
@@ -63,6 +77,8 @@ func New(s *store.Store, dataDir string, publicKey ed25519.PublicKey,
 		packageDir: packageDir,
 		publicKey:  publicKey,
 		online:     online,
+		tokens:     tokens,
+		jobCreator: jobs,
 		now:        now,
 		logger:     logger,
 	}, nil

@@ -25,11 +25,13 @@ import (
 	"github.com/crazychengmm/cagent/internal/agent/trust"
 	agentupgrade "github.com/crazychengmm/cagent/internal/agent/upgrade"
 	"github.com/crazychengmm/cagent/internal/config"
+	ctlcmd "github.com/crazychengmm/cagent/internal/ctl"
 	"github.com/crazychengmm/cagent/internal/logging"
 	"github.com/crazychengmm/cagent/internal/release"
 	"github.com/crazychengmm/cagent/internal/server/admin"
 	"github.com/crazychengmm/cagent/internal/server/ca"
 	"github.com/crazychengmm/cagent/internal/server/controlservice"
+	"github.com/crazychengmm/cagent/internal/server/dispatch"
 	"github.com/crazychengmm/cagent/internal/server/enrollment"
 	"github.com/crazychengmm/cagent/internal/server/enrollservice"
 	"github.com/crazychengmm/cagent/internal/server/management"
@@ -80,8 +82,7 @@ func Run(argv []string, stdout, stderr io.Writer) int {
 	case "server":
 		return runServer(argv[1:], stderr)
 	case "ctl":
-		fmt.Fprintln(stderr, "cagent ctl 将在后续任务实现")
-		return exitUsage
+		return ctlcmd.Run(argv[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "未知子命令 %q\n%s", argv[0], usageText)
 		return exitUsage
@@ -322,7 +323,9 @@ func runServer(args []string, stderr io.Writer) int {
 			return exitError
 		}
 	}
-	managementService, err := management.New(db, cfg.DataDir, signingPub, controlService, nil, logger)
+	dispatchService := dispatch.New(db, controlService, nil, logger)
+	managementService, err := management.New(db, cfg.DataDir, signingPub,
+		controlService, tokenService, dispatchService, nil, logger)
 	if err != nil {
 		logger.Error("初始化管理服务失败", "error", err.Error())
 		return exitError

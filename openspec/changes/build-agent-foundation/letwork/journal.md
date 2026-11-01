@@ -320,3 +320,12 @@
 - server：HandleUpgradeEvent 把 INSTALLING→running、SUCCEEDED→succeeded、ROLLED_BACK/FAILED→failed，写 job.finish 审计；未知 job 忽略。
 - 测试：SystemInstaller 全生命周期（含无备份回滚）、restarter SpawnGuard 顺序与命令失败、state 往返/健康标记/FileHealthProbe、upgrade 事件三态与终态不可变。
 - 自检：21 包 race 全绿、交叉编译通过。任务组 6（6.1-6.8）完成。
+
+### 2026-11-02 04:00 [NOTE] 任务 7.1-7.5 实现完成（任务组 7 收尾）
+- internal/ctl：Config（~/.config/cagent/ctl.yaml + CAGENT_ADMIN_ADDR/TOKEN 环境覆盖，缺地址/token 发请求前失败）、Dial（服务端 TLS、unary+stream Bearer 拦截器、就绪等待）、Run 分发（--config 任意位置解析）。
+- 命令：token create（--ttl 小时，明文仅一次）/list（状态不明文）/revoke；agent list/show（NotFound）；job run（多 --selector、--timeout、--working-dir，返回每机 job id）/list（--agent/--status/--limit）/show（状态+输出流+truncated）/cancel（在线下发 JobCancel，离线 Unavailable）；release package（本地 tar.gz）/sign（离线 ed25519 .sig）/publish（解包读 manifest，meta+分块流式）/list；upgrade --release/--selector/--allow-downgrade。
+- server management RPC 一次补齐：CreateToken/ListTokens/RevokeToken（真实 TokenService）、ListAgents/ShowAgent、RunJob（dispatch.Service）、ListJobs/ShowJob（带输出）、CancelJob（OnlineDispatcher）；New 增 tokens/jobCreator 依赖。
+- Makefile 增 package 目标（build-linux+build→ctl release package），VERSION 走 git describe；实际冒烟打包出 cagent+manifest.json。
+- 测试：management RPC（token 生命周期/agent/run/job 读取与取消离线错误）、ctl 配置文件/环境覆盖/缺凭据/flag 解析/帮助码。
+- 问题：management.TokenService 接口签名与 enrollment.CreateToken 参数顺序初版不一致，按实际对齐；recordingOnline 需对离线 id 返回 ErrAgentOffline；t.Setenv 与 t.Parallel 冲突，相关用例去 Parallel。
+- 自检：全量 race 绿、交叉编译通过、openspec validate strict 通过。
