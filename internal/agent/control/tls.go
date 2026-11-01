@@ -10,6 +10,11 @@ import (
 	"github.com/crazychengmm/cagent/internal/agent/identity"
 )
 
+// ClientTLSConfig 用本地身份构造 mTLS 客户端配置（导出供升级等模块独立建连）。
+func ClientTLSConfig(ident *identity.Identity) (*tls.Config, error) {
+	return clientTLS(ident)
+}
+
 // clientTLS 用本地身份构造 mTLS 客户端配置：CA 锚点来自注册时保存的 CA。
 func clientTLS(ident *identity.Identity) (*tls.Config, error) {
 	if len(ident.CAPEM) == 0 {

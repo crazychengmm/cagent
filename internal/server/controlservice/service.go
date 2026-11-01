@@ -111,7 +111,10 @@ func (s *Service) Control(stream pb.ControlService_ControlServer) error {
 					"job_id", p.JobEvent.GetJobId(), "error", err.Error())
 			}
 		case *pb.AgentMessage_UpgradeEvent:
-			s.logger.Debug("收到 UpgradeEvent（由升级组处理）", "job_id", p.UpgradeEvent.GetJobId())
+			if err := s.HandleUpgradeEvent(ctx, p.UpgradeEvent); err != nil {
+				s.logger.Error("处理 UpgradeEvent 失败",
+					"job_id", p.UpgradeEvent.GetJobId(), "error", err.Error())
+			}
 		default:
 			s.logger.Warn("收到未知类型的 AgentMessage", "agent_id", agentID)
 		}

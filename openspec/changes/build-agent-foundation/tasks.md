@@ -41,7 +41,7 @@
 - [x] 6.5 实现升级任务调度：management.Upgrade 校验版本已发布+标签 AND 圈选，每机一个 kind=upgrade job（携带版本/SHA/签名/大小/allow_downgrade），在线发 UpgradeCommand、离线 pending 复用补投/24h 过期/幂等；drain 按 kind 分发（→ Requirement: Label-based gradual rollout）
 - [x] 6.6 实现升级 grace：升级到达后等待运行中 job 最多 2 分钟（ActiveCount 轮询），宽限内完成则继续、超时 FAILED 不杀任务（→ Requirement: Grace for running jobs）
 - [x] 6.7 实现 guard 状态机纯逻辑：接口化 Installer/HealthProbe/Reporter，版本门控→grace→Stage→Activate→Restart→60s 健康门控→Commit；失败/重启失败→Rollback+重启→ROLLED_BACK，9 组决策表单测（→ Requirement: Guarded restart with health-gated rollback）
-- [ ] 6.8 实现 guard 系统集成：cagent agent --guard-mode 短生命周期进程编排 systemctl restart、新进程健康探测、回滚旧二进制重启、回滚事件上报 server（→ Requirement: Guarded restart with health-gated rollback）
+- [x] 6.8 实现 guard 系统集成：state 文件跨进程交接、SystemInstaller（复制+rename 替换/备份/回滚/清理）、Setsid detach 独立 guard（agent --guard-mode）做文件健康探测+回滚重启+Flush 上报、新版本首连写 healthy 标记；server HandleUpgradeEvent 推进 upgrade job（→ Requirement: Guarded restart with health-gated rollback）
 
 ## 7. 管理 CLI（cagent ctl）
 - [ ] 7.1 实现 ctl 凭据加载：配置文件/环境变量读取管理地址与 admin token，缺失或错误时在发请求前失败并提示（→ Requirement: CLI authentication）

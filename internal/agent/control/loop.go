@@ -120,6 +120,11 @@ func (l *Loop) runOnce(ctx context.Context) (time.Time, error) {
 	return connectedAt, session.run(ctx)
 }
 
+// WaitReady 等待连接就绪（导出供独立短连接使用）。
+func WaitReady(ctx context.Context, conn *grpc.ClientConn, timeout time.Duration) error {
+	return waitReady(ctx, conn, timeout)
+}
+
 func waitReady(ctx context.Context, conn *grpc.ClientConn, timeout time.Duration) error {
 	readyCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

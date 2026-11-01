@@ -37,6 +37,8 @@ type AgentConfig struct {
 	ServerCAFile string `yaml:"server_ca_file"`
 	// ServerCAFingerprint 服务器证书 SHA256 指纹（十六进制），与文件锚点二选一。
 	ServerCAFingerprint string `yaml:"server_ca_fingerprint"`
+	// SigningPubkeyFile 升级包 ed25519 签名公钥 PEM；为空时拒绝一切升级。
+	SigningPubkeyFile string `yaml:"signing_pubkey_file"`
 	// DataDir 身份、证书、旧版本副本与升级状态目录。
 	DataDir string `yaml:"data_dir"`
 	// Labels 静态标签全集，随心跳上报。

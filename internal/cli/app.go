@@ -23,6 +23,7 @@ import (
 	"github.com/crazychengmm/cagent/internal/agent/jobworker"
 	"github.com/crazychengmm/cagent/internal/agent/register"
 	"github.com/crazychengmm/cagent/internal/agent/trust"
+	agentupgrade "github.com/crazychengmm/cagent/internal/agent/upgrade"
 	"github.com/crazychengmm/cagent/internal/config"
 	"github.com/crazychengmm/cagent/internal/logging"
 	"github.com/crazychengmm/cagent/internal/release"
@@ -92,8 +93,12 @@ func runAgent(args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", config.DefaultAgentConfigPath(), "配置文件路径")
 	logLevel := fs.String("log-level", "info", "日志级别 debug/info/warn/error")
+	guardMode := fs.String("guard-mode", "", "升级 guard 状态文件（内部使用）")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
+	}
+	if *guardMode != "" {
+		return runGuardMode(*guardMode, *configPath, *logLevel, stderr)
 	}
 
 	cfg, err := config.LoadAgentConfig(*configPath)
@@ -126,6 +131,30 @@ func runAgent(args []string, stderr io.Writer) int {
 		executor.NewLocalExecutor(), logger, auditor)
 	manager.Start(ctx)
 
+	var signingPub ed25519.PublicKey
+	if cfg.SigningPubkeyFile != "" {
+		pubPEM, err := os.ReadFile(cfg.SigningPubkeyFile)
+		if err != nil {
+			logger.Error("读取升级签名公钥失败", "error", err.Error())
+			return exitError
+		}
+		signingPub, err = release.ParsePublicKeyPEM(pubPEM)
+		if err != nil {
+			logger.Error("解析升级签名公钥失败", "error", err.Error())
+			return exitError
+		}
+	}
+	upgradeHandler := agentupgrade.NewHandler(agentupgrade.HandlerConfig{
+		Identity:       ident,
+		ServerAddr:     cfg.ControlAddress,
+		DataDir:        cfg.DataDir,
+		ConfigPath:     *configPath,
+		CurrentVersion: version.Version,
+		SigningPub:     signingPub,
+		Tracker:        manager,
+		Logger:         logger,
+	})
+
 	logger.Info("agent 启动",
 		"agent_id", ident.AgentID,
 		"control_address", cfg.ControlAddress,
@@ -141,6 +170,8 @@ func runAgent(args []string, stderr io.Writer) int {
 		Labels:            cfg.Labels,
 		Version:           version.Version,
 		JobHandler:        manager,
+		UpgradeHandler:    upgradeHandler,
+		OnStateChange:     markHealthyOnConnect(cfg.DataDir, version.Version),
 		Logger:            logger,
 	})
 	if err != nil {

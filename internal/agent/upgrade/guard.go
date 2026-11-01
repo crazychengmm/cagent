@@ -22,6 +22,8 @@ const (
 	StateSucceeded    State = "succeeded"
 	StateRolledBack   State = "rolled_back"
 	StateFailed       State = "failed"
+	// StateRestarted 表示主进程已完成替换并触发重启，健康门控交由独立 guard。
+	StateRestarted State = "restarted"
 )
 
 // 默认时间预算。
@@ -71,21 +73,22 @@ type Result struct {
 	Reason string
 }
 
-// Run 执行升级编排（纯决策，不直接触碰系统）。
-// pkg 为已通过三重验真的包内容。
+// Run 执行完整编排（主要用于测试：fake Restarter 不会杀死调用进程）。
+// 生产中主进程调用 Prepare（会触发重启杀死自己），健康门控由独立 guard 进程执行。
 func Run(ctx context.Context, jobID, currentVersion string,
 	cmd *pb.UpgradeCommand, pkg []byte, d Deps) Result {
-	report := func(status pb.UpgradeEvent_Status, msg string) {
-		if d.Reporter != nil {
-			d.Reporter.Report(&pb.UpgradeEvent{
-				JobId:       jobID,
-				Status:      status,
-				Message:     msg,
-				FromVersion: currentVersion,
-				ToVersion:   cmd.GetVersion(),
-			})
-		}
+	prepared := Prepare(ctx, jobID, currentVersion, cmd, pkg, d)
+	if prepared.State != StateRestarted {
+		return prepared
 	}
+	return GuardWatch(ctx, cmd, d, currentVersion, jobID)
+}
+
+// Prepare 执行版本门控、grace、暂存、替换并触发重启。
+// 返回 StateRestarted 时调用进程预期很快被服务管理器终止。
+func Prepare(ctx context.Context, jobID, currentVersion string,
+	cmd *pb.UpgradeCommand, pkg []byte, d Deps) Result {
+	report := reporter(d.Reporter, jobID, currentVersion, cmd.GetVersion())
 	fail := func(reason string) Result {
 		report(pb.UpgradeEvent_STATUS_FAILED, reason)
 		return Result{State: StateFailed, Reason: reason}
@@ -95,56 +98,65 @@ func Run(ctx context.Context, jobID, currentVersion string,
 	if grace <= 0 {
 		grace = DefaultGraceTimeout
 	}
-	health := d.HealthTimeout
-	if health <= 0 {
-		health = DefaultHealthTimeout
-	}
 
-	// 1. 版本门控（防降级）。
 	if err := release.DecideUpgrade(currentVersion, cmd.GetVersion(), cmd.GetAllowDowngrade()); err != nil {
 		return fail("版本门控拒绝: " + err.Error())
 	}
-
-	// 2. grace：等待运行中任务，绝不强杀。
 	if d.Tracker != nil {
 		if err := WaitForIdle(ctx, d.Tracker, grace); err != nil {
 			return fail("grace 等待失败: " + err.Error())
 		}
 	}
-
-	// 3. 暂存（校验可执行）。
 	staged, err := d.Installer.Stage(pkg)
 	if err != nil {
 		return fail("暂存失败: " + err.Error())
 	}
-
-	// 4. 替换（保留旧副本）。
 	if err := d.Installer.Activate(staged); err != nil {
 		return fail("替换二进制失败: " + err.Error())
 	}
 
-	// 5. 重启进入新版本。
 	report(pb.UpgradeEvent_STATUS_INSTALLING, "二进制已替换，重启服务")
 	if err := d.Installer.Restart(); err != nil {
-		// 重启命令本身失败：立即回滚并尝试拉起旧版。
 		return d.rollback(report, "重启失败: "+err.Error())
 	}
+	return Result{State: StateRestarted}
+}
 
-	// 6. 健康门控。
+// GuardWatch 在独立 guard 进程中执行健康门控：通过则提交，失败回滚并重启旧版。
+func GuardWatch(ctx context.Context, cmd *pb.UpgradeCommand, d Deps,
+	currentVersion, jobID string) Result {
+	report := reporter(d.Reporter, jobID, currentVersion, cmd.GetVersion())
+	health := d.HealthTimeout
+	if health <= 0 {
+		health = DefaultHealthTimeout
+	}
+
 	hctx, cancel := context.WithTimeout(ctx, health)
 	defer cancel()
 	if err := d.Probe.WaitHealthy(hctx, health); err != nil {
 		return d.rollback(report, "新版本健康检查失败: "+err.Error())
 	}
-
-	// 7. 健康成功：清理旧副本。
 	if err := d.Installer.Commit(); err != nil {
-		// 不影响升级成功，仅记录。
 		report(pb.UpgradeEvent_STATUS_SUCCEEDED, "健康通过（旧副本清理失败: "+err.Error()+")")
 		return Result{State: StateSucceeded}
 	}
 	report(pb.UpgradeEvent_STATUS_SUCCEEDED, "新版本健康通过")
 	return Result{State: StateSucceeded}
+}
+
+func reporter(r Reporter, jobID, from, to string) func(pb.UpgradeEvent_Status, string) {
+	return func(status pb.UpgradeEvent_Status, msg string) {
+		if r == nil {
+			return
+		}
+		r.Report(&pb.UpgradeEvent{
+			JobId:       jobID,
+			Status:      status,
+			Message:     msg,
+			FromVersion: from,
+			ToVersion:   to,
+		})
+	}
 }
 
 // rollback 换回旧版、重启、上报回滚事件；返回 rolled_back 结果。

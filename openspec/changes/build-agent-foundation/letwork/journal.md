@@ -310,3 +310,13 @@
 - 发现 proto 中 UpgradeEvent 是扁平字段（status/message/from/to）而非 oneof，report 直接构造扁平事件。
 - 测试 9 组决策：happy（调用序+INSTALLING/SUCCEEDED 事件）、降级拒绝/显式允许、grace 超时不触安装器、stage/activate 失败、restart 失败回滚、健康失败回滚（调用序列严格断言）、回滚失败终态 FAILED。
 - 自检：全量 race 绿、交叉编译通过。
+
+### 2026-11-02 04:30 [NOTE] 任务 6.8 实现完成（任务组 6 收尾）
+- guard 拆为 Prepare（主进程：版本门控→grace→Stage→Activate→Restart）与 GuardWatch（独立 guard：健康门控→Commit/Rollback+重启）；Run 保留为测试编排。
+- state.go：upgrade-state.json（SaveState 原子写）跨进程传递 BinaryPath/BackupPath/StagedPath/Unit/版本；healthy 标记（MarkHealthy/IsHealthy/ClearHealthy）由新版本首次 mTLS 连接成功（OnStateChange）写入。
+- system.go：SystemInstaller 复制+rename（兼容跨文件系统），Stage 0755、Activate 先备份旧版再替换、Rollback 校验备份存在后换回、Commit 清理；SystemdRestarter 增加 SpawnGuard 钩子，restart 前先 detach。
+- spawn.go：SpawnDetachedGuard 以 Setsid+Process.Release 启动 `cagent agent --guard-mode <state>`；cli 新增 runGuardMode（加载状态/身份→FileHealthProbe 60s→GuardWatch→GuardReporter.Flush 集中上报→清状态）。
+- handler.go：升级处理器独立建 mTLS 短连接 DownloadVerify→写 state→Prepare（失败旧版继续）；config 增 signing_pubkey_file（空则拒绝升级）；runAgent 接入升级处理器与健康标记。
+- server：HandleUpgradeEvent 把 INSTALLING→running、SUCCEEDED→succeeded、ROLLED_BACK/FAILED→failed，写 job.finish 审计；未知 job 忽略。
+- 测试：SystemInstaller 全生命周期（含无备份回滚）、restarter SpawnGuard 顺序与命令失败、state 往返/健康标记/FileHealthProbe、upgrade 事件三态与终态不可变。
+- 自检：21 包 race 全绿、交叉编译通过。任务组 6（6.1-6.8）完成。
