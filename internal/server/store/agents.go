@@ -152,6 +152,22 @@ func (s *Store) RevokeAgent(ctx context.Context, agentID string, at time.Time) (
 	return n > 0, nil
 }
 
+// UpdateAgentCertificate 续签后替换证书序列号与到期时间；
+// agent 不存在或已吊销返回 (false, nil)。
+func (s *Store) UpdateAgentCertificate(ctx context.Context,
+	agentID, serial string, notAfter time.Time) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `
+UPDATE agents
+SET certificate_serial = ?, cert_not_after = ?, updated_at = ?
+WHERE agent_id = ? AND revoked_at IS NULL`,
+		serial, formatTime(notAfter), formatTime(time.Now()), agentID)
+	if err != nil {
+		return false, fmt.Errorf("更新 agent 证书 %s: %w", agentID, err)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 // IsAgentCertificateActive 判断证书序列号是否属于未吊销的已注册 agent。
 func (s *Store) IsAgentCertificateActive(ctx context.Context, serial string) (bool, error) {
 	var active int

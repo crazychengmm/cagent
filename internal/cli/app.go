@@ -11,15 +11,19 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"google.golang.org/grpc"
+
 	"github.com/crazychengmm/cagent/internal/config"
 	"github.com/crazychengmm/cagent/internal/logging"
 	"github.com/crazychengmm/cagent/internal/server/admin"
 	"github.com/crazychengmm/cagent/internal/server/ca"
+	"github.com/crazychengmm/cagent/internal/server/controlservice"
 	"github.com/crazychengmm/cagent/internal/server/enrollment"
 	"github.com/crazychengmm/cagent/internal/server/enrollservice"
 	"github.com/crazychengmm/cagent/internal/server/serve"
 	"github.com/crazychengmm/cagent/internal/server/store"
 	"github.com/crazychengmm/cagent/internal/version"
+	pb "github.com/crazychengmm/cagent/proto/cagent/v1"
 )
 
 // 退出码约定：0 成功，1 运行期错误，2 用法错误。
@@ -164,6 +168,7 @@ func runServer(args []string, stderr io.Writer) int {
 	tokenService := enrollment.NewTokenService(db, cfg.EnrollmentTokenTTL.Std(), nil)
 	enrollService := enrollservice.New(db, tokenService, rootCA,
 		cfg.AgentCertValidity.Std(), nil, logger)
+	controlService := controlservice.New(db, rootCA, cfg.AgentCertValidity.Std(), nil, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -183,6 +188,9 @@ func runServer(args []string, stderr io.Writer) int {
 		AdminToken:       adminToken,
 		Store:            db,
 		Logger:           logger,
+		RegisterControl: func(s *grpc.Server) {
+			pb.RegisterControlServiceServer(s, controlService)
+		},
 	})
 	if err != nil {
 		logger.Error("server 运行失败", "error", err.Error())

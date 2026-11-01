@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/crazychengmm/cagent/internal/server/ca"
+	"github.com/crazychengmm/cagent/internal/server/controlservice"
 	"github.com/crazychengmm/cagent/internal/server/enrollment"
 	"github.com/crazychengmm/cagent/internal/server/enrollservice"
 	"github.com/crazychengmm/cagent/internal/server/store"
@@ -71,9 +72,10 @@ func startHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	discardLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tokens := enrollment.NewTokenService(db, time.Hour, time.Now)
-	enrollSvc := enrollservice.New(db, tokens, rootCA, time.Hour, time.Now,
-		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	enrollSvc := enrollservice.New(db, tokens, rootCA, time.Hour, time.Now, discardLogger)
+	controlSvc := controlservice.New(db, rootCA, time.Hour, time.Now, discardLogger)
 
 	h := &harness{
 		enrollAddr:  freePort(t),
@@ -92,6 +94,7 @@ func startHarness(t *testing.T) *harness {
 			ControlListen:    h.controlAddr,
 			AdminListen:      h.adminAddr,
 			EnrollService:    enrollSvc,
+			RegisterControl:  func(s *grpc.Server) { pb.RegisterControlServiceServer(s, controlSvc) },
 			RegisterAdmin:    func(s *grpc.Server) { pb.RegisterEnrollmentServiceServer(s, enrollSvc) },
 			ServerCert:       *serverCert,
 			CAPEM:            h.caPEM,
@@ -173,9 +176,8 @@ func (h *harness) enrollAgent(t *testing.T, token string) tls.Certificate {
 	return tls.Certificate{Certificate: [][]byte{block.Bytes}, PrivateKey: key}
 }
 
-// openControlStream 建立 Control 双向流并返回首个 Recv 错误；
-// 未知服务的 Unimplemented 要在 Recv 才对客户端可见。
-func openControlStream(t *testing.T, addr string, caPEM []byte, cert *tls.Certificate) error {
+// dialControlConn 建立到 control 端口的 mTLS 连接；cert 为 nil 时不携带客户端证书。
+func dialControlConn(t *testing.T, addr string, caPEM []byte, cert *tls.Certificate) *grpc.ClientConn {
 	t.Helper()
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(caPEM)
@@ -187,6 +189,14 @@ func openControlStream(t *testing.T, addr string, caPEM []byte, cert *tls.Certif
 	if err != nil {
 		t.Fatal(err)
 	}
+	return conn
+}
+
+// openControlStream 建立 Control 双向流并返回首个 Recv 错误；
+// 未知服务的 Unimplemented 要在 Recv 才对客户端可见。
+func openControlStream(t *testing.T, addr string, caPEM []byte, cert *tls.Certificate) error {
+	t.Helper()
+	conn := dialControlConn(t, addr, caPEM, cert)
 	defer conn.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -198,6 +208,46 @@ func openControlStream(t *testing.T, addr string, caPEM []byte, cert *tls.Certif
 	_ = stream.CloseSend()
 	_, err = stream.Recv()
 	return err
+}
+
+func csrWithKey(t *testing.T, key *ecdsa.PrivateKey, cn string) []byte {
+	t.Helper()
+	tmpl := x509.CertificateRequest{Subject: pkix.Name{CommonName: cn}}
+	der, err := x509.CreateCertificateRequest(rand.Reader, &tmpl, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})
+}
+
+func TestServe_RenewCertOverMutualTLS(t *testing.T) {
+	h := startHarness(t)
+	oldCert := h.enrollAgent(t, h.createToken(t))
+
+	// 用旧证书通过 mTLS 调续签（沿用同一私钥）。
+	conn := dialControlConn(t, h.controlAddr, h.caPEM, &oldCert)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	resp, err := pb.NewControlServiceClient(conn).RenewCert(ctx,
+		&pb.RenewCertRequest{CsrPem: csrWithKey(t, oldCert.PrivateKey.(*ecdsa.PrivateKey), "host1")})
+	if err != nil {
+		t.Fatalf("RenewCert: %v", err)
+	}
+	block, _ := pem.Decode(resp.CertificatePem)
+	if block == nil {
+		t.Fatal("续签返回不是 PEM")
+	}
+	newCert := tls.Certificate{Certificate: [][]byte{block.Bytes}, PrivateKey: oldCert.PrivateKey}
+
+	// 旧序列号已失效：旧证书的新连接必须被拒。
+	if err := openControlStream(t, h.controlAddr, h.caPEM, &oldCert); status.Code(err) != codes.Unavailable {
+		t.Errorf("续签后旧证书应被拒(Unavailable)，实际 code=%v err=%v", status.Code(err), err)
+	}
+
+	// 新证书可正常通过 mTLS（Control 尚未实现 → Unimplemented）。
+	if err := openControlStream(t, h.controlAddr, h.caPEM, &newCert); status.Code(err) != codes.Unimplemented {
+		t.Errorf("新证书应通过 mTLS，实际 code=%v err=%v", status.Code(err), err)
+	}
 }
 
 // strangerCert 生成一张由外来自签 CA 签发的客户端证书。

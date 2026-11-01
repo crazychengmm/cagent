@@ -187,6 +187,15 @@
 - 坑：① 库内 panic 辅助函数违反 G-PANIC-01，改回 error；② 未知服务在拦截器之前返回 Unimplemented，故用真实 EnrollmentService 挂 admin 端口测拦截链；③ bidi 流的建流错误在首个 Recv 才可见；④ 合法 server 配置现在会阻塞，cli 单测改为只测启动前失败路径。
 - 自检：10 包 go test -race 全绿，交叉编译通过。
 
+### 2026-11-01 22:20 [PROBLEM] 任务 3.3 跨依赖（agent 侧续签依赖未实现的 4.1 身份模块）
+- 现象：3.3 排在 4.1 之前，却要做 agent 侧证书原子替换与续签调度。
+- 处理：调整任务边界——3.3 只做 server RenewCert（mTLS 识别+签发+更新序列号+吊销拒绝）并注册 control 端口；agent 侧续签调度/原子替换/替换后重连并入 4.3（控制循环，届时身份模块已就位）。tasks.md 增加 3.3a 条目记录该拆分，requirement 覆盖不变。
+
+### 2026-11-01 22:25 [NOTE] 任务 3.3 实现完成（任务组 3 收尾）
+- 改动：store.UpdateAgentCertificate（原子换 serial+not_after，吊销机 false）；controlservice.RenewCert（peer TLSInfo 取证书 CN=UUID → GetAgent → 校验 CSR → 签发 → 更新序列号，旧证因 serial 被覆盖即时失效；吊销机 PermissionDenied；坏 CSR InvalidArgument）；cli/serve 注册到 control 端口。
+- 测试：纯单测 7 例（含无 peer/非 TLS/未知 agent/吊销/坏 CSR）+ serve 真实 mTLS 续签链路（续签后旧证书新连接被拒 Unavailable、新证书 Unimplemented 可达）。
+- 自检：10 包 race 全绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
