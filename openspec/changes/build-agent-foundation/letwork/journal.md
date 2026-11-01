@@ -304,3 +304,9 @@
 ### 2026-11-02 03:05 [NOTE] 任务 6.6 实现完成
 - jobworker.Manager.ActiveCount（排队+在跑，不含缓存）；upgrade.WaitForIdle（立即检查+100ms 轮询，超时 ErrJobsRunning，不取消任何任务；ctx 可取消）。
 - 测试 4 组：已空闲立即返回、先忙后闲、超时且任务不受影响、ctx 取消。全量 race 绿。
+
+### 2026-11-02 03:30 [NOTE] 任务 6.7 实现完成
+- internal/agent/upgrade/guard.go：Run 纯状态机（Installer/HealthProbe/Reporter/ActiveTracker 全接口化，默认 grace 2m/健康 60s/总超时 10m 由调用方 ctx 控制）；步骤：release.DecideUpgrade 防降级→WaitForIdle 不强杀→Stage→Activate→Restart→WaitHealthy→Commit；任一系统步失败 fail 旧版继续；Restart/健康失败 rollback（换回旧副本+再次 Restart），rollback 自身失败→FAILED。
+- 发现 proto 中 UpgradeEvent 是扁平字段（status/message/from/to）而非 oneof，report 直接构造扁平事件。
+- 测试 9 组决策：happy（调用序+INSTALLING/SUCCEEDED 事件）、降级拒绝/显式允许、grace 超时不触安装器、stage/activate 失败、restart 失败回滚、健康失败回滚（调用序列严格断言）、回滚失败终态 FAILED。
+- 自检：全量 race 绿、交叉编译通过。

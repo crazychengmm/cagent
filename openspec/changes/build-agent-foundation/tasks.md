@@ -40,7 +40,7 @@
 - [x] 6.4 实现版本比较、防降级：release.Parse/Compare/DecideUpgrade，相同拒绝、默认拒降级、allow_downgrade 显式放行（→ Requirement: Downgrade rejection）
 - [x] 6.5 实现升级任务调度：management.Upgrade 校验版本已发布+标签 AND 圈选，每机一个 kind=upgrade job（携带版本/SHA/签名/大小/allow_downgrade），在线发 UpgradeCommand、离线 pending 复用补投/24h 过期/幂等；drain 按 kind 分发（→ Requirement: Label-based gradual rollout）
 - [x] 6.6 实现升级 grace：升级到达后等待运行中 job 最多 2 分钟（ActiveCount 轮询），宽限内完成则继续、超时 FAILED 不杀任务（→ Requirement: Grace for running jobs）
-- [ ] 6.7 实现 guard 状态机纯逻辑：保留旧版→替换→60s 健康窗口（本地自检 + mTLS 心跳双条件）→成功提交/失败回滚决策，状态持久化 state 文件，总超时 10 分钟，附决策表单测（→ Requirement: Guarded restart with health-gated rollback）
+- [x] 6.7 实现 guard 状态机纯逻辑：接口化 Installer/HealthProbe/Reporter，版本门控→grace→Stage→Activate→Restart→60s 健康门控→Commit；失败/重启失败→Rollback+重启→ROLLED_BACK，9 组决策表单测（→ Requirement: Guarded restart with health-gated rollback）
 - [ ] 6.8 实现 guard 系统集成：cagent agent --guard-mode 短生命周期进程编排 systemctl restart、新进程健康探测、回滚旧二进制重启、回滚事件上报 server（→ Requirement: Guarded restart with health-gated rollback）
 
 ## 7. 管理 CLI（cagent ctl）
