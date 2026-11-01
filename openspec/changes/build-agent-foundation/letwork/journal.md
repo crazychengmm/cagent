@@ -261,6 +261,12 @@
 - 问题：recordingAuditor 无锁读取被 race 检测抓出（findFinish 直读切片），改走加锁 finish 方法，持锁内不重复加锁。
 - 自检：18 包 race 全绿、交叉编译通过。任务组 5（5.1-5.7）完成。
 
+### 2026-11-02 01:20 [NOTE] 任务 6.1 实现完成
+- internal/release：Manifest（version/file/sha256/size）；BuildPackage 流式 tar.gz（cagent 0755、manifest.json 0644，tar mtime 零值保证可复现构建）。
+- 测试：解包校验两文件内容/权限/manifest sha256==二进制摘要/版本；空版本拒绝。
+- Makefile package 目标依赖 ctl release 命令，随 7.5 一并落地（已在任务描述注明）。
+- 自检：19 包 race 全绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

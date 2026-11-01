@@ -34,7 +34,7 @@
 - [x] 5.7 实现执行审计：job.create/job.finish 写 server audit_logs；agent 本地 audit.log JSONL（开始/结束、4KB 预览、0600），worker 接入控制循环（→ Requirement: Execution audit trail）
 
 ## 6. Agent 自升级
-- [ ] 6.1 实现发布物打包：manifest（版本号、SHA256）生成与 tar.gz（二进制+manifest）Makefile 构建目标（→ Requirement: Signed release packages）
+- [x] 6.1 实现发布物打包：release.BuildPackage 产出 tar.gz（cagent 0755 + manifest.json：版本/SHA256/size，固定 mtime 可复现）；Makefile package 目标随 ctl release 命令在 7.5 落地（→ Requirement: Signed release packages）
 - [ ] 6.2 实现 ed25519 签名与发布：release sign 管理端离线签名、release publish 上传（server 复算校验后落 releases 表/存储）、release list，附签名/验签单测（→ Requirement: Signed release packages）
 - [ ] 6.3 实现 agent 下载与验真：下载后先 SHA256 后 ed25519 验签（内置公钥 + 可配置追加公钥），任一失败拒装、继续运行旧版、升级 job FAILED 并上报原因，附单测（→ Requirement: Signed release packages）
 - [ ] 6.4 实现版本比较与防降级：语义化版本比较（附单测），默认拒绝低版本，仅显式 allow-downgrade 放行（→ Requirement: Downgrade rejection）
