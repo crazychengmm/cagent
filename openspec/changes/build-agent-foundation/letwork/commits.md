@@ -23,3 +23,5 @@
 | 4.4 | fc4ffe0 | feat(control): 心跳落库、在线状态与离线扫描 | internal/server/controlservice、serve |
 | 5.1 | 83bef40 | feat(agent): shell 执行器（进程组、超时/取消杀组、输出事件流） | internal/agent/executor |
 | 5.2 | 5e86a03 | feat(agent): 本地 worker 池与输出管道竞态修复 | internal/agent/jobworker、executor |
+| 5.3 | bfb00f1 | feat(server): job 事件状态机与流式输出 1MB 截断 | internal/server/controlservice |
+| 5.4 | 2042f64 | feat(agent): job 终态结果缓存与重发幂等 | internal/agent/jobworker |

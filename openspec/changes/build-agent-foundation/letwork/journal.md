@@ -241,6 +241,11 @@
 - 测试：scriptedExecutor 精确计数，重发同 job_id 到新 sender 时 Run 仅 1 次、回放无输出块；FIFO 淘汰与默认容量。
 - 自检：jobworker -count=3 稳定，全量 race 绿、交叉编译通过。
 
+### 2026-11-02 00:35 [NOTE] 任务 5.5 实现完成
+- internal/server/dispatch：MatchLabels AND 纯函数（空选择器=全部）；CreateJobs 校验命令/超时（默认 5m、硬上限 60m），零匹配 ErrNoMatch；每机独立 job_+uuid、pending 落库；OnlineDispatcher 接口（controlservice 满足）在线机立即 JobDispatch，发送失败保留 pending 待补投；job.create 审计（detail 含 selector/matched/job_ids）。
+- 测试 5 组：选择器表驱动、2 机匹配（在线机收到/离线 pending）、空选择器、零匹配、校验失败。
+- 自检：全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

@@ -29,7 +29,7 @@
 - [x] 5.2 实现 agent 本地 worker 池：默认并发 4（可配）、超出排队、取消信号传播到执行器（→ Requirement: Shell execution model）
 - [x] 5.3 实现 job 状态机与流式输出：PENDING/RUNNING/五终态合法流转（终态不可回退，附单测）；stdout/stderr 分块流式回传落库、总量 1MB 截断（末块切边）并置 truncated 标记；job.finish 审计（→ Requirement: Job terminal state machine, Streaming output with truncation, Execution audit trail）
 - [x] 5.4 实现 job 幂等去重：agent 缓存已完成 job 终态（FIFO 1000），重发同一 job_id 回放 Started+Finished 不重新执行，附单测（→ Requirement: Idempotent job delivery）
-- [ ] 5.5 实现 server 标签调度：key=value 的 AND 选择器匹配（附单测）、每台匹配机创建独立 job、零匹配显式报错不静默成功（→ Requirement: Label-targeted asynchronous job dispatch）
+- [x] 5.5 实现 server 标签调度：key=value 的 AND 选择器匹配（附单测）、每台匹配机创建独立 job、零匹配显式报错不静默成功；超时硬上限、在线立即下发/离线 pending、job.create 审计（→ Requirement: Label-targeted asynchronous job dispatch）
 - [ ] 5.6 实现离线排队与补投：在线立即下发、离线入队、agent 重连后 drain 补投、排队超 24h 扫描置 EXPIRED（→ Requirement: Offline queueing and redelivery）
 - [ ] 5.7 实现执行审计：job 下发与结束写 audit_logs（操作者、时间、目标 agent、命令全文、终态、退出码、输出摘要），agent 本地同步保留执行留痕（→ Requirement: Execution audit trail）
 
