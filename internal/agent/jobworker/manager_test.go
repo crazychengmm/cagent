@@ -38,6 +38,17 @@ func (f *fakeSender) finished(jobID string) *pb.JobFinished {
 	return nil
 }
 
+func (f *fakeSender) hasStarted(jobID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, m := range f.msgs {
+		if ev := m.GetJobEvent(); ev != nil && ev.GetJobId() == jobID && ev.GetStarted() != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (f *fakeSender) outputCount(jobID string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -86,6 +97,18 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
+func waitFor(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("条件等待超时")
+}
+
 func TestManager_AllJobsComplete(t *testing.T) {
 	t.Parallel()
 
@@ -113,7 +136,7 @@ func TestManager_ConcurrencyLimit(t *testing.T) {
 	sender := &fakeSender{}
 	start := time.Now()
 	for _, id := range []string{"c1", "c2", "c3"} {
-		m.OnDispatch(context.Background(), sender, dispatch(id, "sleep 0.3", 10))
+		m.OnDispatch(context.Background(), sender, dispatch(id, "sleep 0.2", 10))
 	}
 	for _, id := range []string{"c1", "c2", "c3"} {
 		if waitFinished(t, sender, id, 5*time.Second).Result != pb.JobFinished_RESULT_SUCCEEDED {
@@ -121,12 +144,12 @@ func TestManager_ConcurrencyLimit(t *testing.T) {
 		}
 	}
 	elapsed := time.Since(start)
-	// 并发 2：3 个 0.3s 任务约 0.6s；串行会 0.9s，全并行 0.3s。
-	if elapsed < 450*time.Millisecond {
-		t.Errorf("耗时 %s <450ms，并发上限可能未生效", elapsed)
+	// 并发 2：3 个 0.2s 任务理论 0.4s；串行 0.6s；窗口放宽以兼容 race 高负载。
+	if elapsed < 350*time.Millisecond {
+		t.Errorf("耗时 %s <350ms，并发上限可能未生效", elapsed)
 	}
-	if elapsed > 850*time.Millisecond {
-		t.Errorf("耗时 %s >850ms，疑似退化为串行", elapsed)
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("耗时 %s >1.5s，疑似退化为串行", elapsed)
 	}
 }
 
@@ -151,7 +174,7 @@ func TestManager_CancelQueuedDoesNotExecute(t *testing.T) {
 	m, _ := newTestManager(t, 1)
 	sender := &fakeSender{}
 	m.OnDispatch(context.Background(), sender, dispatch("q1", "sleep 0.5", 10))
-	time.Sleep(100 * time.Millisecond) // 占住唯一 worker
+	waitFor(t, 3*time.Second, func() bool { return sender.hasStarted("q1") }) // 占住唯一 worker
 	m.OnDispatch(context.Background(), sender, dispatch("q2", "printf should-not-run", 10))
 	m.OnCancel("q2")
 

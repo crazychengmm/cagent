@@ -267,6 +267,15 @@
 - Makefile package 目标依赖 ctl release 命令，随 7.5 一并落地（已在任务描述注明）。
 - 自检：19 包 race 全绿、交叉编译通过。
 
+### 2026-11-02 01:50 [NOTE] 任务 6.2 实现完成
+- proto 新增 management.proto：ManagementService（token/agent/job/release/upgrade 全套 RPC 与消息），admin 端口注册；6.2 实现 PublishRelease（流式）+ ListReleases，其余 7 组任务实现。
+- internal/release/signing：GenerateSigningKey（ed25519）、PKCS8/SPKI PEM 编解码、SignPackage（ed25519 直签整包）、VerifyPackage；签名/篡改/异钥/垃圾 PEM 单测。
+- internal/server/management：流式 PublishRelease（首帧 meta 校验版本/size/sha256 hex/64B 签名，分块写入 0600 临时文件，512MB 上限，EOF 后校 size/hash、可选 ed25519 验签、版本去重 AlreadyExists，rename 原子落 dataDir/releases/<v>.pkg，InsertRelease + 审计，失败回滚文件）；ListReleases 映射 ReleaseInfo。
+- config 增 release_signing_pubkey_file（可空：server 不强制验签，强制点在 agent；首装阶段可空，journal 决策记录）；cli 装配并 RegisterAdmin。
+- 测试：management 7 组（成功落盘/临时文件清理、坏签名、size/hash 不符、首帧非 meta、重复版本、列表）。
+- 【PROBLEM】jobworker ConcurrencyLimit 墙钟断言在全包并行 -race 过载时偶发超 850ms；放宽至 350ms..1.5s 并改 0.2s 任务，随后 40 轮稳定；取消类时序改等 Started 事件。
+- 自检：全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

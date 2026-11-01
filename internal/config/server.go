@@ -40,6 +40,9 @@ type ServerConfig struct {
 	DataDir string `yaml:"data_dir"`
 	// ServerCertHosts 首启生成的 server 叶子证书 SAN（DNS 或 IP）。
 	ServerCertHosts []string `yaml:"server_cert_hosts"`
+	// ReleaseSigningPubkeyFile 发布签名 ed25519 公钥 PEM；为空则 server 不强制验签
+	//（agent 端始终强制），适合公钥尚未分发的首装阶段。
+	ReleaseSigningPubkeyFile string `yaml:"release_signing_pubkey_file"`
 
 	// HeartbeatTimeout 多久收不到心跳判 offline。
 	HeartbeatTimeout Duration `yaml:"heartbeat_timeout"`

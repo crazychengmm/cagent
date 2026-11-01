@@ -27,3 +27,5 @@
 | 5.4 | 2042f64 | feat(agent): job 终态结果缓存与重发幂等 | internal/agent/jobworker |
 | 5.5 | 6b528d6 | feat(server): 标签 AND 选择器调度与在线下发 | internal/server/dispatch |
 | 5.6 | 0836d47 | feat(server): 重连补投与 24h 排队过期扫描 | internal/server/controlservice、store、serve |
+| 5.7 | 3e029ac | feat(agent): 本地执行审计 JSONL 与 worker 接线控制循环 | internal/agent/audit、jobworker、cli |
+| 6.1 | 6cb7c6d | feat(release): tar.gz 发布包与 manifest 打包 | internal/release |

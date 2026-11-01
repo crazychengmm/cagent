@@ -3,6 +3,7 @@ package cli
 
 import (
 	"context"
+	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"io"
@@ -24,11 +25,13 @@ import (
 	"github.com/crazychengmm/cagent/internal/agent/trust"
 	"github.com/crazychengmm/cagent/internal/config"
 	"github.com/crazychengmm/cagent/internal/logging"
+	"github.com/crazychengmm/cagent/internal/release"
 	"github.com/crazychengmm/cagent/internal/server/admin"
 	"github.com/crazychengmm/cagent/internal/server/ca"
 	"github.com/crazychengmm/cagent/internal/server/controlservice"
 	"github.com/crazychengmm/cagent/internal/server/enrollment"
 	"github.com/crazychengmm/cagent/internal/server/enrollservice"
+	"github.com/crazychengmm/cagent/internal/server/management"
 	"github.com/crazychengmm/cagent/internal/server/serve"
 	"github.com/crazychengmm/cagent/internal/server/store"
 	"github.com/crazychengmm/cagent/internal/version"
@@ -274,6 +277,25 @@ func runServer(args []string, stderr io.Writer) int {
 		cfg.AgentCertValidity.Std(), nil, logger)
 	controlService := controlservice.New(db, rootCA, cfg.AgentCertValidity.Std(), nil, logger)
 
+	var signingPub ed25519.PublicKey
+	if cfg.ReleaseSigningPubkeyFile != "" {
+		pubPEM, err := os.ReadFile(cfg.ReleaseSigningPubkeyFile)
+		if err != nil {
+			logger.Error("读取发布签名公钥失败", "error", err.Error())
+			return exitError
+		}
+		signingPub, err = release.ParsePublicKeyPEM(pubPEM)
+		if err != nil {
+			logger.Error("解析发布签名公钥失败", "error", err.Error())
+			return exitError
+		}
+	}
+	managementService, err := management.New(db, cfg.DataDir, signingPub, nil, logger)
+	if err != nil {
+		logger.Error("初始化管理服务失败", "error", err.Error())
+		return exitError
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -297,6 +319,9 @@ func runServer(args []string, stderr io.Writer) int {
 		SweepInterval:    10 * time.Second,
 		RegisterControl: func(s *grpc.Server) {
 			pb.RegisterControlServiceServer(s, controlService)
+		},
+		RegisterAdmin: func(s *grpc.Server) {
+			pb.RegisterManagementServiceServer(s, managementService)
 		},
 	})
 	if err != nil {

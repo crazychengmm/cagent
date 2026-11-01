@@ -28,3 +28,5 @@ make proto
 ```
 
 生成物 `*.pb.go` / `*_grpc.pb.go` 与 `.proto` 同目录并**提交入库**，使普通构建不依赖 protoc。修改契约后必须重新生成并在同一任务内提交。
+
+服务划分：EnrollmentService（注册端口，仅 Enroll）、ControlService（mTLS 双向流 + RenewCert + DownloadRelease）、ManagementService（admin 端口，全部经 admin token 拦截器：token/agent/job/release/upgrade 管理）。
