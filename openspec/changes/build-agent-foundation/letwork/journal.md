@@ -219,6 +219,12 @@
 - 测试：真实 mTLS + agent Loop 集成（心跳置 online 且版本标签刷新、停止心跳后 sweepOnce 置 offline、吊销踢掉长连接且重连被拒、SendToAgent 离线错误）；适配 serve 测试（Control 已实现后半关闭得到 EOF 而非 Unimplemented）。
 - 自检：14 包 race 全绿、交叉编译通过。任务组 4（4.1-4.4 + 3.3a）完成。
 
+### 2026-11-01 23:45 [NOTE] 任务 5.1 实现完成
+- internal/agent/executor：LocalExecutor 事件流（Started/Output/Finished）；CommandContext + Setpgid 独立进程组；cmd.Cancel 杀 -PGID(SIGKILL)，WaitDelay 5s 兜底；stdout/stderr 各一个 reader 按原始 64KB 块输出（不改字节），Wait 后等两个 reader 结束保证序；classify 区分 canceled/timeout/failed(code)/succeeded。
+- 测试 6 组：成功/非零退出/stderr/工作目录+环境/超时杀组（pgrep 独特标记验证后台子进程无残留）/父取消杀组。
+- 坑：① cmd.Cancel 必须配合 CommandContext（启动即报错）；② 按行 Scanner 给无换行尾块补 \n 改变了输出，改原始块读；③ macOS t.TempDir 经 /private 符号链接，pwd 对比先 EvalSymlinks。
+- 自检：全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
