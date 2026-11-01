@@ -64,6 +64,13 @@ type Job struct {
 	CreatedAt      time.Time
 	StartedAt      *time.Time
 	FinishedAt     *time.Time
+
+	// 升级任务参数（Kind=upgrade）。
+	ReleaseVersion string
+	SHA256Hex      string
+	Signature      []byte
+	PackageSize    int64
+	AllowDowngrade bool
 }
 
 // JobOutputChunk 是一段流式输出。
@@ -89,11 +96,13 @@ func (s *Store) CreateJob(ctx context.Context, j Job) error {
 	}
 	_, err = s.db.ExecContext(ctx, `
 INSERT INTO jobs (job_id, agent_id, kind, command, working_dir, extra_env,
-                  timeout_seconds, requested_by, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  timeout_seconds, requested_by, status, created_at, updated_at,
+                  release_version, sha256_hex, signature, package_size, allow_downgrade)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		j.JobID, j.AgentID, j.Kind, j.Command, j.WorkingDir, string(env),
 		j.TimeoutSeconds, j.RequestedBy, j.Status,
-		formatTime(j.CreatedAt), formatTime(j.CreatedAt))
+		formatTime(j.CreatedAt), formatTime(j.CreatedAt),
+		j.ReleaseVersion, j.SHA256Hex, j.Signature, j.PackageSize, boolToInt(j.AllowDowngrade))
 	if err != nil {
 		return fmt.Errorf("插入 job %s: %w", j.JobID, err)
 	}
@@ -263,22 +272,25 @@ func (s *Store) SumJobOutputSize(ctx context.Context, jobID string) (int64, erro
 const jobSelect = `
 SELECT job_id, agent_id, kind, command, working_dir, extra_env, timeout_seconds,
        requested_by, status, exit_code, truncated, message,
-       created_at, started_at, finished_at
+       created_at, started_at, finished_at,
+       release_version, sha256_hex, signature, package_size, allow_downgrade
 FROM jobs`
 
 func scanJob(row rowScanner) (*Job, error) {
 	var (
-		j          Job
-		envJSON    string
-		exitCode   sql.NullInt64
-		truncated  int
-		createdAt  string
-		startedAt  sql.NullString
-		finishedAt sql.NullString
+		j              Job
+		envJSON        string
+		exitCode       sql.NullInt64
+		truncated      int
+		createdAt      string
+		startedAt      sql.NullString
+		finishedAt     sql.NullString
+		allowDowngrade int
 	)
 	err := row.Scan(&j.JobID, &j.AgentID, &j.Kind, &j.Command, &j.WorkingDir, &envJSON,
 		&j.TimeoutSeconds, &j.RequestedBy, &j.Status, &exitCode, &truncated, &j.Message,
-		&createdAt, &startedAt, &finishedAt)
+		&createdAt, &startedAt, &finishedAt,
+		&j.ReleaseVersion, &j.SHA256Hex, &j.Signature, &j.PackageSize, &allowDowngrade)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -303,5 +315,13 @@ func scanJob(row rowScanner) (*Job, error) {
 	if j.FinishedAt, err = parseOptionalTime(finishedAt); err != nil {
 		return nil, err
 	}
+	j.AllowDowngrade = allowDowngrade != 0
 	return &j, nil
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

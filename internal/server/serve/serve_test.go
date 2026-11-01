@@ -75,7 +75,8 @@ func startHarness(t *testing.T) *harness {
 	discardLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tokens := enrollment.NewTokenService(db, time.Hour, time.Now)
 	enrollSvc := enrollservice.New(db, tokens, rootCA, time.Hour, time.Now, discardLogger)
-	controlSvc := controlservice.New(db, rootCA, time.Hour, time.Now, discardLogger)
+	controlSvc := controlservice.New(db, rootCA, time.Hour,
+		filepath.Join(t.TempDir(), "releases"), time.Now, discardLogger)
 
 	h := &harness{
 		enrollAddr:  freePort(t),

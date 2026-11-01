@@ -44,7 +44,12 @@ CREATE TABLE jobs (
     created_at      TEXT NOT NULL,
     started_at      TEXT,
     finished_at     TEXT,
-    updated_at      TEXT NOT NULL
+    updated_at      TEXT NOT NULL,
+    release_version TEXT NOT NULL DEFAULT '',
+    sha256_hex      TEXT NOT NULL DEFAULT '',
+    signature       BLOB,
+    package_size    INTEGER NOT NULL DEFAULT 0,
+    allow_downgrade INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX idx_jobs_agent_status ON jobs(agent_id, status);
 CREATE INDEX idx_jobs_status_created ON jobs(status, created_at);

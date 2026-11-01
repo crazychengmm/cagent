@@ -51,7 +51,7 @@ func newManagement(t *testing.T, publicKey ed25519.PublicKey) (*Service, *store.
 	}
 	t.Cleanup(func() { db.Close() })
 	dataDir := t.TempDir()
-	svc, err := New(db, dataDir, publicKey, time.Now,
+	svc, err := New(db, dataDir, publicKey, nil, time.Now,
 		slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatal(err)

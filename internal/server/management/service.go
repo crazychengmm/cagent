@@ -30,6 +30,12 @@ const (
 	maxPackageSize = 512 << 20 // 512MB
 )
 
+// OnlineDispatcher 是在线控制通道能力（由 controlservice.Service 满足）。
+type OnlineDispatcher interface {
+	OnlineAgentIDs() []string
+	SendToAgent(agentID string, msg *pb.ServerMessage) error
+}
+
 // Service 是 ManagementService 的实现。
 type Service struct {
 	pb.UnimplementedManagementServiceServer
@@ -37,13 +43,14 @@ type Service struct {
 	store      *store.Store
 	packageDir string
 	publicKey  ed25519.PublicKey // 可空：未配置时 server 不强制验签（由 agent 强制）
+	online     OnlineDispatcher
 	now        func() time.Time
 	logger     *slog.Logger
 }
 
 // New 构造管理服务；包文件存 dataDir/releases。
 func New(s *store.Store, dataDir string, publicKey ed25519.PublicKey,
-	now func() time.Time, logger *slog.Logger) (*Service, error) {
+	online OnlineDispatcher, now func() time.Time, logger *slog.Logger) (*Service, error) {
 	packageDir := filepath.Join(dataDir, ReleaseDirName)
 	if err := os.MkdirAll(packageDir, 0o700); err != nil {
 		return nil, err
@@ -55,6 +62,7 @@ func New(s *store.Store, dataDir string, publicKey ed25519.PublicKey,
 		store:      s,
 		packageDir: packageDir,
 		publicKey:  publicKey,
+		online:     online,
 		now:        now,
 		logger:     logger,
 	}, nil

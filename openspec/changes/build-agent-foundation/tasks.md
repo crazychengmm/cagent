@@ -38,7 +38,7 @@
 - [x] 6.2 实现 ed25519 签名与发布：signing 库（keygen/PEM/Sign/Verify）、ManagementService.PublishRelease 流式校验落盘+登记+审计、ListReleases；management.proto 全量 admin API 一次定义（→ Requirement: Signed release packages）
 - [x] 6.3 实现 agent 下载与验真：control DownloadRelease 流式发包；upgrade.DownloadVerify 依次校验大小/SHA256/ed25519，任一失败拒装（→ Requirement: Signed release packages）
 - [x] 6.4 实现版本比较、防降级：release.Parse/Compare/DecideUpgrade，相同拒绝、默认拒降级、allow_downgrade 显式放行（→ Requirement: Downgrade rejection）
-- [ ] 6.5 实现升级任务调度：upgrade 按标签选择器圈选创建升级 job，复用普通 job 的离线排队与 24h 过期规则（→ Requirement: Label-based gradual rollout）
+- [x] 6.5 实现升级任务调度：management.Upgrade 校验版本已发布+标签 AND 圈选，每机一个 kind=upgrade job（携带版本/SHA/签名/大小/allow_downgrade），在线发 UpgradeCommand、离线 pending 复用补投/24h 过期/幂等；drain 按 kind 分发（→ Requirement: Label-based gradual rollout）
 - [ ] 6.6 实现升级 grace：升级任务到达后等待运行中 job 最多 2 分钟，宽限内完成则继续，超时升级 job FAILED 上报且绝不终止用户 job，附单测（→ Requirement: Grace for running jobs）
 - [ ] 6.7 实现 guard 状态机纯逻辑：保留旧版→替换→60s 健康窗口（本地自检 + mTLS 心跳双条件）→成功提交/失败回滚决策，状态持久化 state 文件，总超时 10 分钟，附决策表单测（→ Requirement: Guarded restart with health-gated rollback）
 - [ ] 6.8 实现 guard 系统集成：cagent agent --guard-mode 短生命周期进程编排 systemctl restart、新进程健康探测、回滚旧二进制重启、回滚事件上报 server（→ Requirement: Guarded restart with health-gated rollback）

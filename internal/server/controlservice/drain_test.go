@@ -21,6 +21,65 @@ func (h *collectingHandler) OnDispatch(_ context.Context, _ control.Sender, d *p
 }
 func (h *collectingHandler) OnCancel(string) {}
 
+type collectingUpgradeHandler struct {
+	ch chan *pb.UpgradeCommand
+}
+
+func (h *collectingUpgradeHandler) OnUpgrade(_ context.Context,
+	_ control.Sender, u *pb.UpgradeCommand) {
+	h.ch <- u
+}
+
+func TestControlFlow_DrainsUpgradeJobAsUpgradeCommand(t *testing.T) {
+	h := startControlHarness(t)
+	defer h.stop()
+
+	ident := h.provisionAgent(t, "ag-up")
+	now := time.Now().UTC()
+	if err := h.store.CreateJob(context.Background(), store.Job{
+		JobID:          "u-1",
+		AgentID:        "ag-up",
+		Kind:           store.KindUpgrade,
+		Status:         store.JobStatusPending,
+		RequestedBy:    "alice",
+		CreatedAt:      now,
+		ReleaseVersion: "3.0.0",
+		SHA256Hex:      "deadbeef",
+		Signature:      []byte("ed25519-sig"),
+		PackageSize:    99,
+		AllowDowngrade: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	handler := &collectingUpgradeHandler{ch: make(chan *pb.UpgradeCommand, 1)}
+	loop, err := control.New(control.Config{
+		Identity:          ident,
+		ServerAddr:        h.addr,
+		DataDir:           t.TempDir(),
+		Version:           "2.0.0",
+		HeartbeatInterval: 50 * time.Millisecond,
+		UpgradeHandler:    handler,
+		Logger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = loop.Run(ctx) }()
+
+	select {
+	case u := <-handler.ch:
+		if u.JobId != "u-1" || u.Version != "3.0.0" || u.Sha256Hex != "deadbeef" ||
+			string(u.Signature) != "ed25519-sig" || u.PackageSize != 99 || !u.AllowDowngrade {
+			t.Errorf("补投升级指令字段错误: %+v", u)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("未收到升级指令补投")
+	}
+}
+
 func pendingJob(jobID, agentID string, createdAt time.Time) store.Job {
 	return store.Job{
 		JobID: jobID, AgentID: agentID, Kind: store.KindCommand, Command: "cmd-" + jobID,

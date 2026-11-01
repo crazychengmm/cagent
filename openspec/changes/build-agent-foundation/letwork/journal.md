@@ -293,3 +293,10 @@
 - 事实：proposal.md、design.md、specs 下 6 个 capability delta（agent-enrollment / agent-connection / remote-job-execution / agent-self-upgrade / agent-installation / management-cli，共 29 条 requirement、42 个 scenario；此处曾误记为 26/33，20:58 更正）写完；openspec validate 与 --strict 均通过；openspec status 显示 proposal/specs/design = done，tasks = ready。
 - 过程问题：写 agent-self-upgrade delta 时误把文件写到 /Users/admin/out.md，已删除并在正确路径重写，无内容遗失。
 - 另：openspec/config.yaml 已补项目 context（Go/gRPC/SQLite/中文产物约定）。
+
+### 2026-11-02 02:50 [NOTE] 任务 6.5 实现完成
+- schema：jobs 加 release_version/sha256_hex/signature/package_size/allow_downgrade 五列（Job 模型/CreateJob/scanJob 同步，bool↔int），复用 job 排队/补投/TTL/幂等。
+- management.Upgrade：GetRelease 必须存在（否则 FailedPrecondition），标签 AND 圈选，零匹配 FailedPrecondition；每机 upgrade job；在线经 OnlineDispatcher 发 UpgradeCommand（失败留 pending）；upgrade.dispatch 审计；New 增加 dispatcher 参数，cli 注入 controlService。
+- controlservice drain 按 kind 分发（messageForPendingJob：upgrade→UpgradeCommand，command→JobDispatch）。
+- 测试：management 3 组（匹配创建+在线字段+离线 pending+审计、未发布、零匹配）；drain 升级补投 mTLS 集成（字段完整）。
+- 自检：21 包 race 全绿、交叉编译通过。

@@ -291,7 +291,7 @@ func runServer(args []string, stderr io.Writer) int {
 			return exitError
 		}
 	}
-	managementService, err := management.New(db, cfg.DataDir, signingPub, nil, logger)
+	managementService, err := management.New(db, cfg.DataDir, signingPub, controlService, nil, logger)
 	if err != nil {
 		logger.Error("初始化管理服务失败", "error", err.Error())
 		return exitError

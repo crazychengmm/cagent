@@ -29,24 +29,44 @@ func (s *Service) drainPendingJobs(ctx context.Context, session *streamSession) 
 	// ListJobs 按创建时间倒序，补投需正序。
 	for i := len(jobs) - 1; i >= 0; i-- {
 		job := jobs[i]
-		msg := &pb.ServerMessage{
-			Payload: &pb.ServerMessage_JobDispatch{
-				JobDispatch: &pb.JobDispatch{
-					JobId:          job.JobID,
-					Command:        job.Command,
-					WorkingDir:     job.WorkingDir,
-					ExtraEnv:       job.ExtraEnv,
-					TimeoutSeconds: job.TimeoutSeconds,
-					RequestedBy:    job.RequestedBy,
-				},
-			},
-		}
+		msg := messageForPendingJob(job)
 		if err := session.send(msg); err != nil {
 			// 流已断：任务保持 pending，下次重连继续补投。
 			s.logger.Warn("补投中断，剩余任务等待下次重连",
 				"agent_id", session.agentID, "sent", len(jobs)-1-i, "error", err.Error())
 			return
 		}
-		s.logger.Info("补投离线期间任务", "agent_id", session.agentID, "job_id", job.JobID)
+		s.logger.Info("补投离线期间任务", "agent_id", session.agentID, "job_id", job.JobID, "kind", job.Kind)
+	}
+}
+
+// messageForPendingJob 按任务类型构造补投消息。
+func messageForPendingJob(job store.Job) *pb.ServerMessage {
+	if job.Kind == store.KindUpgrade {
+		return &pb.ServerMessage{
+			Payload: &pb.ServerMessage_UpgradeCommand{
+				UpgradeCommand: &pb.UpgradeCommand{
+					JobId:          job.JobID,
+					Version:        job.ReleaseVersion,
+					Sha256Hex:      job.SHA256Hex,
+					Signature:      job.Signature,
+					PackageSize:    job.PackageSize,
+					AllowDowngrade: job.AllowDowngrade,
+					RequestedBy:    job.RequestedBy,
+				},
+			},
+		}
+	}
+	return &pb.ServerMessage{
+		Payload: &pb.ServerMessage_JobDispatch{
+			JobDispatch: &pb.JobDispatch{
+				JobId:          job.JobID,
+				Command:        job.Command,
+				WorkingDir:     job.WorkingDir,
+				ExtraEnv:       job.ExtraEnv,
+				TimeoutSeconds: job.TimeoutSeconds,
+				RequestedBy:    job.RequestedBy,
+			},
+		},
 	}
 }
