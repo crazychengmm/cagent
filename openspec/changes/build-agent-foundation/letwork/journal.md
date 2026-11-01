@@ -165,6 +165,11 @@
 - 自检：gofmt/vet/build、go test -race 全绿，全量回归 + 交叉编译通过。
 - 问题：token.go 首次 Write 写入了签名写错（time.Time 误代 time.Duration）且带占位代码的半成品，立即整文件重写，未进入提交；根因是一次想写太多，后续一个文件一次写完整再跑门禁。
 
+### 2026-11-01 22:15 [NOTE] 任务 2.4 实现完成（任务组 2 收尾）
+- 改动：internal/server/admin（EnsureAdminToken：首启生成 cactl_+32 字节 token，0600 文件 0700 目录，重启复用，空文件报错；AuthInterceptor：Unary/Stream 拦截器，authorization metadata，支持 Bearer 前缀，subtle.ConstantTimeCompare 定长比较，失败 codes.Unauthenticated）。
+- 问题：Stream 单测首版传 nil ServerStream，ss.Context() 先于授权求值导致 nil panic；改为嵌入 grpc.ServerStream 的 fakeStream（真实 gRPC 中 ss 不会为 nil），补有效 token 放行用例。
+- 自检：gofmt/vet/build、go test -race 全量 8 包全绿、交叉编译通过。任务组 2（2.1-2.4）完成。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

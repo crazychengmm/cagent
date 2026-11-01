@@ -10,7 +10,7 @@
 - [x] 2.1 实现 SQLite 存储层：开启 WAL、schema 迁移（agents、enrollment_tokens、jobs、job_output、audit_logs、releases 六表）与各表 CRUD（→ Requirement: Job terminal state machine, Execution audit trail）
 - [x] 2.2 实现内置 CA：首启生成 ECDSA P-256 根密钥与自签 CA 证书（数据目录 600）、agent 证书签发与吊销状态检查，附表驱动单测（→ Requirement: Mutual TLS enforcement）
 - [x] 2.3 实现 enrollment token 领域逻辑：32 字节随机创建（TTL 默认 168h）、可复用、列表、吊销、过期判定，附单测（→ Requirement: Enrollment token lifecycle）
-- [ ] 2.4 实现 admin token 首启生成（数据目录 600 文件）与管理 API 的 token 鉴权拦截器（→ Requirement: CLI authentication）
+- [x] 2.4 实现 admin token 首启生成（数据目录 600 文件）与管理 API 的 token 鉴权拦截器（→ Requirement: CLI authentication）
 
 ## 3. 注册服务与 mTLS
 - [ ] 3.1 实现 EnrollmentService 的 Enroll：单向 TLS + token 校验 + CSR 验签后签发证书、创建 agents 行（UUID/标签），注册失败写审计，附单测（→ Requirement: Enrollment token lifecycle, Certificate enrollment and persistent agent identity）
