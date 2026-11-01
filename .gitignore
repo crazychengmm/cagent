@@ -1,0 +1,19 @@
+# 构建产物（/dist/ 下的 cagent 二进制已由目录规则覆盖，
+# 不写裸 "cagent" 模式，否则会误忽略 cmd/cagent/ 源码目录）
+/dist/
+/bin/
+
+# Go 测试与覆盖率
+*.test
+*.out
+coverage.txt
+
+# 本地开发/ e2e 临时数据目录
+/.dev-data/
+/.tmp/
+
+# 编辑器与系统文件
+.DS_Store
+*.swp
+.idea/
+.vscode/
