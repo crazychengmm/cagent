@@ -102,7 +102,10 @@ func (s *Service) Control(stream pb.ControlService_ControlServer) error {
 				return err
 			}
 		case *pb.AgentMessage_JobEvent:
-			s.logger.Debug("收到 JobEvent（由任务组处理）", "job_id", p.JobEvent.GetJobId())
+			if err := s.HandleJobEvent(ctx, p.JobEvent); err != nil {
+				s.logger.Error("处理 JobEvent 失败",
+					"job_id", p.JobEvent.GetJobId(), "error", err.Error())
+			}
 		case *pb.AgentMessage_UpgradeEvent:
 			s.logger.Debug("收到 UpgradeEvent（由升级组处理）", "job_id", p.UpgradeEvent.GetJobId())
 		default:

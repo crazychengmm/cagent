@@ -27,7 +27,7 @@
 ## 5. 远程任务执行
 - [x] 5.1 实现 shell executor：root 经 /bin/sh -c 执行、可指定工作目录与追加环境变量、独立进程组启动、超时/取消时杀掉整个进程组，附单测（→ Requirement: Shell execution model, Job cancellation）
 - [x] 5.2 实现 agent 本地 worker 池：默认并发 4（可配）、超出排队、取消信号传播到执行器（→ Requirement: Shell execution model）
-- [ ] 5.3 实现 job 状态机与流式输出：PENDING/RUNNING/五终态合法流转（终态不可回退，附单测）；stdout/stderr 分块流式回传落库、总量 1MB 截断并置 truncated 标记（→ Requirement: Job terminal state machine, Streaming output with truncation）
+- [x] 5.3 实现 job 状态机与流式输出：PENDING/RUNNING/五终态合法流转（终态不可回退，附单测）；stdout/stderr 分块流式回传落库、总量 1MB 截断（末块切边）并置 truncated 标记；job.finish 审计（→ Requirement: Job terminal state machine, Streaming output with truncation, Execution audit trail）
 - [ ] 5.4 实现 job 幂等去重：agent 缓存已完成 job 结果，重发同一 job_id 直接回传既有结果不重新执行，附单测（→ Requirement: Idempotent job delivery）
 - [ ] 5.5 实现 server 标签调度：key=value 的 AND 选择器匹配（附单测）、每台匹配机创建独立 job、零匹配显式报错不静默成功（→ Requirement: Label-targeted asynchronous job dispatch）
 - [ ] 5.6 实现离线排队与补投：在线立即下发、离线入队、agent 重连后 drain 补投、排队超 24h 扫描置 EXPIRED（→ Requirement: Offline queueing and redelivery）

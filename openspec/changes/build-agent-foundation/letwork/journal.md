@@ -231,6 +231,11 @@
 - 【重要 PROBLEM】StdoutPipe+手动读存在竞态：极快命令（builtin printf）+高负载（全包 -race）时 Wait 可能先关闭管道导致输出丢失（偶发 ja 输出事件缺失）；改为 cmd.Stdout/Stderr 挂 eventWriter，Wait 等待内部 copy 完成，竞态消除，同时删除自写 reader 与 pipeDone。
 - 自检：16 包 race 全绿、交叉编译通过。
 
+### 2026-11-02 00:15 [NOTE] 任务 5.3 实现完成
+- controlservice 接入 JobEvent：Started→running（重复 Started 终态时忽略）；Output→seq=已存块数+1，按 SumJobOutputSize 1MB 上限丢弃超限块、末块切边保证总量恰好 1MB；Finished→终态（CAS 不可回退，重放忽略），truncated=agent 上报或服务端统计≥1MB，写 job.finish 审计（actor=RequestedBy）；未知 job 仅警告不影响流。
+- 测试 5 组：完整生命周期（started_at/输出顺序流/字节统计/终态/审计）、failed exit2+message、终态不可回退、2.4MB 截断到恰好 1MB 且 truncated、未知 job 忽略。
+- 自检：全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
