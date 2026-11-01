@@ -1,0 +1,30 @@
+schema: spec-driven
+
+context: |
+  单仓 Go 项目（module github.com/crazychengmm/cagent，Go 1.24+），产出单一静态二进制 cagent，
+  子命令 agent/server/ctl；CGO_ENABLED=0，目标 linux/amd64 与 linux/arm64（systemd + glibc 发行版）。
+  通信：gRPC 双向流 + protobuf，agent 主动出站，mTLS 双向认证；server 存储用 SQLite（WAL）。
+  测试命令：go vet ./... && gofmt -l . && go test ./...；另有 test/e2e 本地双进程 e2e 脚本与 docker(systemd) 用例。
+  OpenSpec 产物（proposal/spec/design/tasks）用中文书写；结构性关键字（Requirement/Scenario/ADDED 等）保持英文。
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
