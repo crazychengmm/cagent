@@ -135,6 +135,13 @@
 - 工具链：protoc 36.2（brew）、protoc-gen-go/grpc（go install，~/go/bin）。
 - 自检：gofmt clean、vet/build 通过、双架构静态交叉编译通过、go test 无测试文件包正常。
 
+### 2026-11-01 21:30 [NOTE] 任务 1.3 实现完成
+- 改动：internal/config（duration.go 自定义 Duration 支持 "15s"；agent.go / server.go 配置结构、默认值、KnownFields 严格解析、Validate）+ config_test.go（11 个表驱动/并行用例）；引入 gopkg.in/yaml.v3。
+- 默认值落地：心跳 15s、判活 45s（server）、并发 4、job 超时 5m/硬上限 60m、排队 TTL 24h、证书 90d、token 168h；端口约定 enrollment 9443 / control 9444 / admin 9445；data-dir /var/lib/cagent(-server)。
+- 校验：control_address 必填、并发 1..64、超时 ≤60m、标签键白名单与值非空、server 三监听互不相同。首次注册三要素（token/CA/注册地址）的条件校验留到 4.2 运行期处理。
+- 问题：手写 const 对齐多了空格，gofmt -w 修复（机械门禁拦住，未进提交）。
+- 自检：gofmt clean、go vet、go build、go test -race 全绿，交叉编译静态 ELF 通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。
