@@ -29,3 +29,11 @@
 | 5.6 | 0836d47 | feat(server): 重连补投与 24h 排队过期扫描 | internal/server/controlservice、store、serve |
 | 5.7 | 3e029ac | feat(agent): 本地执行审计 JSONL 与 worker 接线控制循环 | internal/agent/audit、jobworker、cli |
 | 6.1 | 6cb7c6d | feat(release): tar.gz 发布包与 manifest 打包 | internal/release |
+| 6.2 | 0a1002b | feat(release): ed25519 签名库、管理面 proto 与流式发布 | internal/release、management、proto |
+| 6.3 | 616ebfd | feat(upgrade): 发布包流式下载与三重验真 | internal/agent/upgrade、controlservice |
+| 6.4 | 33a7736 | feat(release): 语义版本比较与防降级决策 | internal/release |
+| 6.5 | 39377ba | feat(server): 升级任务调度与按类型补投 | internal/server、jobs schema |
+| 6.6 | ce3ff2f | feat(agent): 升级 grace 等待 | internal/agent/{jobworker,upgrade} |
+| 6.7 | 97c604f | feat(upgrade): guard 健康门控状态机 | internal/agent/upgrade |
+| 6.8 | f127344 | feat(upgrade): guard 系统集成与 detach | internal/agent/upgrade、cli |
+| 7.1-7.5 | 110ee6c | feat(ctl): 管理 CLI 全套命令与 management RPC | internal/ctl、management、Makefile |
