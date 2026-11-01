@@ -34,14 +34,15 @@ type Service struct {
 	store        *store.Store
 	ca           *ca.CA
 	certValidity time.Duration
+	packageDir   string
 	now          func() time.Time
 	logger       *slog.Logger
 	registry     *streamRegistry
 }
 
-// New 构造控制通道服务；now 为 nil 时用墙上时钟。
+// New 构造控制通道服务；packageDir 是已发布升级包目录；now 为 nil 时用墙上时钟。
 func New(s *store.Store, rootCA *ca.CA, certValidity time.Duration,
-	now func() time.Time, logger *slog.Logger) *Service {
+	packageDir string, now func() time.Time, logger *slog.Logger) *Service {
 	if now == nil {
 		now = time.Now
 	}
@@ -49,6 +50,7 @@ func New(s *store.Store, rootCA *ca.CA, certValidity time.Duration,
 		store:        s,
 		ca:           rootCA,
 		certValidity: certValidity,
+		packageDir:   packageDir,
 		now:          now,
 		logger:       logger,
 		registry:     newStreamRegistry(),

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -26,6 +27,7 @@ type controlHarness struct {
 	store  *store.Store
 	rootCA *ca.CA
 	svc    *Service
+	pkgDir string
 	stop   func()
 }
 
@@ -46,7 +48,9 @@ func startControlHarness(t *testing.T) *controlHarness {
 		t.Fatal(err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	svc := New(db, rootCA, time.Hour, time.Now, logger)
+	pkgDir := filepath.Join(t.TempDir(), "releases")
+	os.MkdirAll(pkgDir, 0o700)
+	svc := New(db, rootCA, time.Hour, pkgDir, time.Now, logger)
 
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(rootCA.CACertPEM())
@@ -67,6 +71,7 @@ func startControlHarness(t *testing.T) *controlHarness {
 		store:  db,
 		rootCA: rootCA,
 		svc:    svc,
+		pkgDir: pkgDir,
 		stop:   server.Stop,
 	}
 }

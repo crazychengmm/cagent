@@ -102,7 +102,7 @@ func TestPublishRelease_SuccessAndPersisted(t *testing.T) {
 	if r.Size != int64(len(pkg)) {
 		t.Errorf("登记 size = %d", r.Size)
 	}
-	content, err := os.ReadFile(filepath.Join(dataDir, releaseDirName, "1.0.0.pkg"))
+	content, err := os.ReadFile(filepath.Join(dataDir, ReleaseDirName, "1.0.0.pkg"))
 	if err != nil {
 		t.Fatalf("包文件未落盘: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestPublishRelease_SuccessAndPersisted(t *testing.T) {
 	}
 
 	// upload-* 临时文件应已清理。
-	entries, _ := os.ReadDir(filepath.Join(dataDir, releaseDirName))
+	entries, _ := os.ReadDir(filepath.Join(dataDir, ReleaseDirName))
 	for _, e := range entries {
 		if e.Name() != "1.0.0.pkg" {
 			t.Errorf("存在残留文件: %s", e.Name())

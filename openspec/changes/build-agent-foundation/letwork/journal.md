@@ -276,6 +276,12 @@
 - 【PROBLEM】jobworker ConcurrencyLimit 墙钟断言在全包并行 -race 过载时偶发超 850ms；放宽至 350ms..1.5s 并改 0.2s 任务，随后 40 轮稳定；取消类时序改等 Started 事件。
 - 自检：全量 race 绿、交叉编译通过。
 
+### 2026-11-02 02:20 [NOTE] 任务 6.3 实现完成
+- controlservice.DownloadRelease 流式发包（64KB，版本/文件缺失 NotFound）；New 增加 packageDir，management 导出 ReleaseDirName 共用 releases 目录。
+- agent upgrade.DownloadVerify：边收边 hash，大小超限即拒、EOF 后校 size/SHA256/ed25519（Expected 取自 mTLS 升级指令），无公钥拒绝；哨兵错误三类。
+- 测试：agent 6 组（分块成功/size/hash/异钥/无公钥/流错误），server 3 组 mTLS 集成。
+- 自检：全量 race 绿、交叉编译通过。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

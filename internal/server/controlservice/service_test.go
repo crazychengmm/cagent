@@ -45,7 +45,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	return &fixture{
-		svc:   New(db, rootCA, testCertValidity, time.Now, slog.New(slog.NewTextHandler(io.Discard, nil))),
+		svc:   New(db, rootCA, testCertValidity, t.TempDir(), time.Now, slog.New(slog.NewTextHandler(io.Discard, nil))),
 		store: db,
 		ca:    rootCA,
 	}

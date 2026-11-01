@@ -275,7 +275,8 @@ func runServer(args []string, stderr io.Writer) int {
 	tokenService := enrollment.NewTokenService(db, cfg.EnrollmentTokenTTL.Std(), nil)
 	enrollService := enrollservice.New(db, tokenService, rootCA,
 		cfg.AgentCertValidity.Std(), nil, logger)
-	controlService := controlservice.New(db, rootCA, cfg.AgentCertValidity.Std(), nil, logger)
+	controlService := controlservice.New(db, rootCA, cfg.AgentCertValidity.Std(),
+		filepath.Join(cfg.DataDir, management.ReleaseDirName), nil, logger)
 
 	var signingPub ed25519.PublicKey
 	if cfg.ReleaseSigningPubkeyFile != "" {

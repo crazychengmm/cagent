@@ -24,7 +24,7 @@ func newJobEventService(t *testing.T) (*Service, *store.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(db, rootCA, time.Hour, time.Now,
+	return New(db, rootCA, time.Hour, t.TempDir(), time.Now,
 		slog.New(slog.NewTextHandler(io.Discard, nil))), db
 }
 

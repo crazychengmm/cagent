@@ -26,7 +26,7 @@ import (
 
 // 包目录名与上传保护上限。
 const (
-	releaseDirName = "releases"
+	ReleaseDirName = "releases"
 	maxPackageSize = 512 << 20 // 512MB
 )
 
@@ -44,7 +44,7 @@ type Service struct {
 // New 构造管理服务；包文件存 dataDir/releases。
 func New(s *store.Store, dataDir string, publicKey ed25519.PublicKey,
 	now func() time.Time, logger *slog.Logger) (*Service, error) {
-	packageDir := filepath.Join(dataDir, releaseDirName)
+	packageDir := filepath.Join(dataDir, ReleaseDirName)
 	if err := os.MkdirAll(packageDir, 0o700); err != nil {
 		return nil, err
 	}
