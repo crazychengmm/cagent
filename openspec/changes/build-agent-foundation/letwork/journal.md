@@ -142,6 +142,13 @@
 - 问题：手写 const 对齐多了空格，gofmt -w 修复（机械门禁拦住，未进提交）。
 - 自检：gofmt clean、go vet、go build、go test -race 全绿，交叉编译静态 ELF 通过。
 
+### 2026-11-01 21:34 [NOTE] 任务 1.4 实现完成（任务组 1 收尾）
+- 改动：internal/logging（slog JSON handler 工厂，级别 debug/info/warn/error）；internal/cli（Run(argv,stdout,stderr) int 子命令分发 + agent/server 接线配置加载与日志，ctl 占位 exit 2）；cmd/cagent 改为薄入口。
+- 退出码约定：0 成功 / 1 运行期错误 / 2 用法错误。
+- 安全：启动日志显式不打 enrollment_token（C-LOG-05），测试断言该字段不出现。
+- 冒烟：agent 输出两行合法 JSON（INFO 启动 + WARN 占位）；无参/未知子命令 exit 2；双架构交叉编译通过。
+- 自检：gofmt clean、vet、build、go test -race（cli/config/logging 均 ok）。任务组 1（1.1-1.4）全部完成。
+
 ### 2026-11-01 21:00 [DECISION] plan 任务拆分策略
 - 决定：9 个任务组、44 个任务，顺序=依赖：①骨架/proto/配置 ②server 存储+CA+token ③注册与 mTLS ④agent 身份与控制循环 ⑤远程执行 ⑥自升级 ⑦ctl CLI ⑧安装/systemd ⑨端到端验证。
 - 理由：契约先行（proto/SQL schema），安全底座（CA/mTLS/身份）先于业务通道，升级放在执行之后（升级 grace/健康判定依赖 job 执行器），CLI 放 server 能力齐备后，安装脚本放最后（消费全部配置/路径），e2e 集中收尾并在功能任务内已挂关键单测。

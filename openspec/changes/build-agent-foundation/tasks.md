@@ -4,7 +4,7 @@
 - [x] 1.1 初始化 Go module（github.com/crazychengmm/cagent）、目录骨架、internal/version 包（ldflags 注入 Version/Commit）、Makefile（CGO_ENABLED=0 交叉编译 linux/amd64+arm64、fmt/vet/test 目标）与 .gitignore
 - [x] 1.2 定义并生成 protobuf 契约：EnrollmentService（Enroll）+ Control 双向流（Heartbeat、JobDispatch、JobEvent、UpgradeCommand 等），另含 RenewCert 与 DownloadRelease；proto/README 写明生成命令（→ Requirement: Certificate enrollment and persistent agent identity, Automatic certificate renewal, Heartbeat and online status）
 - [x] 1.3 实现 agent/server 两端配置结构与 YAML 加载：server 地址、CA/证书/密钥路径、data-dir、labels、心跳 15s、并发 4、超时 5m 等默认值与启动校验（→ Requirement: One-command guided installation）
-- [ ] 1.4 实现 cagent 主命令骨架：agent/server/ctl 子命令分发、--config 全局参数、基于 log/slog 的 JSON 结构化日志（→ Requirement: Execution audit trail）
+- [x] 1.4 实现 cagent 主命令骨架：agent/server/ctl 子命令分发、--config 全局参数、基于 log/slog 的 JSON 结构化日志（→ Requirement: Execution audit trail）
 
 ## 2. Server 存储与 PKI 基础
 - [ ] 2.1 实现 SQLite 存储层：开启 WAL、schema 迁移（agents、enrollment_tokens、jobs、job_output、audit_logs、releases 六表）与各表 CRUD（→ Requirement: Job terminal state machine, Execution audit trail）
