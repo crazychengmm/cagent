@@ -63,6 +63,6 @@ const ctlUsage = `cagent ctl — 管理客户端
   token create|list|revoke   enrollment token 管理
   agent list|show            agent 清单
   job run|list|show|cancel   任务管理
-  release sign|publish|list  发布物管理
+  release keygen|package|sign|publish|list  签名密钥与发布物管理
   upgrade                    按标签发起升级
 `

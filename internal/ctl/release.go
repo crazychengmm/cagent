@@ -19,11 +19,13 @@ import (
 
 func runReleaseCmd(configPath string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "用法: release package|sign|publish|list")
+		fmt.Fprintln(stderr, "用法: release keygen|package|sign|publish|list")
 		return 2
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
+	case "keygen":
+		return releaseKeygen(rest, stdout, stderr)
 	case "package":
 		return releasePackage(rest, stdout, stderr)
 	case "sign":
@@ -36,6 +38,51 @@ func runReleaseCmd(configPath string, args []string, stdout, stderr io.Writer) i
 		fmt.Fprintf(stderr, "未知 release 子命令 %q\n", sub)
 		return 2
 	}
+}
+
+// release keygen --key <priv.pem> --pub <pub.pem>
+// 生成 ed25519 发布签名密钥对（首次发布前离线执行，私钥务必妥善保管）。
+func releaseKeygen(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("release keygen", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	keyPath := fs.String("key", "release.key", "私钥输出路径（PEM，0600）")
+	pubPath := fs.String("pub", "release.pub", "公钥输出路径（PEM，随 agent 安装分发）")
+	force := fs.Bool("force", false, "覆盖已存在的密钥文件")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	for _, p := range []string{*keyPath, *pubPath} {
+		if _, err := os.Stat(p); err == nil && !*force {
+			fmt.Fprintf(stderr, "%s 已存在（--force 覆盖）\n", p)
+			return 1
+		}
+	}
+	priv, pub, err := release.GenerateSigningKey()
+	if err != nil {
+		fmt.Fprintf(stderr, "生成密钥失败: %v\n", err)
+		return 1
+	}
+	privPEM, err := release.EncodePrivateKeyPEM(priv)
+	if err != nil {
+		fmt.Fprintf(stderr, "编码私钥失败: %v\n", err)
+		return 1
+	}
+	pubPEM, err := release.EncodePublicKeyPEM(pub)
+	if err != nil {
+		fmt.Fprintf(stderr, "编码公钥失败: %v\n", err)
+		return 1
+	}
+	if err := os.WriteFile(*keyPath, privPEM, 0o600); err != nil {
+		fmt.Fprintf(stderr, "写私钥失败: %v\n", err)
+		return 1
+	}
+	if err := os.WriteFile(*pubPath, pubPEM, 0o644); err != nil {
+		fmt.Fprintf(stderr, "写公钥失败: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "已生成签名密钥:\n  私钥(妥善保管): %s\n  公钥(分发给 agent/server): %s\n",
+		*keyPath, *pubPath)
+	return 0
 }
 
 // release package --binary cagent --version 1.2.3 [--out pkg.tar.gz]
