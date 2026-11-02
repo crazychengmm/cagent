@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -149,6 +151,10 @@ func releasePublish(configPath string, args []string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "读取包内清单失败: %v\n", err)
 		return 1
 	}
+	// sha256 针对整个 .pkg（agent 下载后校验整包；签名同样覆盖整包）。
+	hasher := sha256.New()
+	hasher.Write(pkg)
+	packageSHA := hex.EncodeToString(hasher.Sum(nil))
 
 	ctx, cancel := context.WithTimeout(context.Background(), rpcTimeout)
 	defer cancel()
@@ -167,7 +173,7 @@ func releasePublish(configPath string, args []string, stdout, stderr io.Writer) 
 	if err := stream.Send(&pb.PublishReleaseChunk{
 		Chunk: &pb.PublishReleaseChunk_Meta{Meta: &pb.ReleaseMeta{
 			Version:   manifest.Version,
-			Sha256Hex: manifest.SHA256Hex,
+			Sha256Hex: packageSHA,
 			Size:      int64(len(pkg)),
 			Signature: signature,
 		}},

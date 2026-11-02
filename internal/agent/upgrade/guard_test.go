@@ -122,7 +122,6 @@ func TestRun_HappyPath(t *testing.T) {
 		t.Fatalf("state=%s reason=%s", result.State, result.Reason)
 	}
 	wantCalls := []string{"stage", "activate", "restart", "commit"}
-	// 关键调用顺序存在
 	for _, want := range wantCalls {
 		found := false
 		for _, c := range inst.calls {
@@ -134,10 +133,10 @@ func TestRun_HappyPath(t *testing.T) {
 			t.Errorf("缺少调用 %s，实际 %v", want, inst.calls)
 		}
 	}
+	// 结束状态由调用方持久化（PendingResult），主连接仅即时报 INSTALLING。
 	statuses := reporter.statuses()
-	if len(statuses) != 2 || statuses[0] != pb.UpgradeEvent_STATUS_INSTALLING ||
-		statuses[1] != pb.UpgradeEvent_STATUS_SUCCEEDED {
-		t.Errorf("事件序列错误: %v", statuses)
+	if len(statuses) != 1 || statuses[0] != pb.UpgradeEvent_STATUS_INSTALLING {
+		t.Errorf("主进程只应即时报 INSTALLING: %v", statuses)
 	}
 }
 
@@ -223,7 +222,7 @@ func TestRun_RestartFailureRollsBack(t *testing.T) {
 	t.Parallel()
 
 	inst := &fakeInstaller{restartErr: errors.New("systemctl failed")}
-	deps, reporter := happyDeps(inst)
+	deps, _ := happyDeps(inst)
 	result := Run(context.Background(), "u-job", "1.0.0", command("2.0.0", false),
 		[]byte("pkg"), deps)
 
@@ -239,18 +238,13 @@ func TestRun_RestartFailureRollsBack(t *testing.T) {
 	if !hasRollback {
 		t.Error("未执行 Rollback")
 	}
-	statuses := reporter.statuses()
-	last := statuses[len(statuses)-1]
-	if last != pb.UpgradeEvent_STATUS_ROLLED_BACK {
-		t.Errorf("末事件应为 ROLLED_BACK: %v", statuses)
-	}
 }
 
 func TestRun_UnhealthyRollsBack(t *testing.T) {
 	t.Parallel()
 
 	inst := &fakeInstaller{}
-	deps, reporter := happyDeps(inst)
+	deps, _ := happyDeps(inst)
 	deps.Probe = &fakeProbe{err: errors.New("60s 内未上报心跳")}
 
 	result := Run(context.Background(), "u-job", "1.0.0", command("2.0.0", false),
@@ -267,25 +261,18 @@ func TestRun_UnhealthyRollsBack(t *testing.T) {
 			t.Errorf("第 %d 步=%s 期望 %s，全序列 %v", i, inst.calls[i], want[i], inst.calls)
 		}
 	}
-	statuses := reporter.statuses()
-	if statuses[len(statuses)-1] != pb.UpgradeEvent_STATUS_ROLLED_BACK {
-		t.Errorf("末事件应为 ROLLED_BACK: %v", statuses)
-	}
 }
 
 func TestRun_RollbackFailureFails(t *testing.T) {
 	t.Parallel()
 
 	inst := &fakeInstaller{rollbackErr: errors.New("disk dead")}
-	deps, reporter := happyDeps(inst)
+	deps, _ := happyDeps(inst)
 	deps.Probe = &fakeProbe{err: errors.New("unhealthy")}
 
 	result := Run(context.Background(), "u-job", "1.0.0", command("2.0.0", false),
 		[]byte("pkg"), deps)
 	if result.State != StateFailed {
 		t.Fatalf("回滚失败应为 failed: %s", result.State)
-	}
-	if statuses := reporter.statuses(); statuses[len(statuses)-1] != pb.UpgradeEvent_STATUS_FAILED {
-		t.Errorf("末事件应为 FAILED: %v", statuses)
 	}
 }

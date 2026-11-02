@@ -336,3 +336,15 @@
 - scripts/install.sh（可执行，sh -n 通过）：必填参数与 CA/指纹互斥校验、root+systemctl+glibc+amd64/arm64 检测、install 原子落位+二进制可执行预检、配置 0600（不回显 token）、unit 安装（缺 deploy 时内置兜底）、daemon-reload+enable+restart+is-active 确认、trap 回滚已落文件；无任何 insecure 开关。
 - test/e2e：Dockerfile.systemd（ubuntu 22.04 + systemd）与 docker_systemd_test.sh（布局安装、kill -9 MainPID 后验证新 PID 且 active）；脚本在镜像不可达时显式 SKIP。
 - 【PROBLEM】本机 OrbStack docker.io/auth.docker.io 超时（与 ghcr 同源网络限制），镜像站 daocloud/1panel 此刻也不可达，容器实跑留待 CI；脚本已支持镜像站回退与 SKIP，语法与资产齐备。
+
+### 2026-11-02 06:00 [NOTE] 任务 6.8 收尾修正 + 任务组 9 e2e（9.1-9.6 完成，全流程打通）
+- 【关键修复 1】Stage 错误：把整个 tar.gz 当二进制写入（ELF 损坏，新版本崩溃回滚）；新增 ExtractBinary 从包中解出 cagent 再暂存，6.8 单测改为先 BuildPackage 再 Stage。
+- 【关键修复 2】升级结果上报竞态：guard 短连接上报 SUCCEEDED 后立即退出，与 agent 重连竞争同一控制流，旧流 ctx 取消导致「扫描 job: context canceled」事件丢失。改为：① 业务落库统一用 context.WithoutCancel 不随连接取消；② guard 不再建短连接，只把结果写 upgrade-result.json；③ 重启后的 agent 通过 OnConnected 钩子在自己的稳定主连接上等待并上报该文件（ReportPendingResults），上报成功才删除；④ rollback 重启使用不带 SpawnGuard 的独立 restarter，避免重复 guard。
+- 【关键修复 3】detach guard 健康探测：独立 Setsid 进程中较长 Sleep(200ms)/select-timer 偶发永久阻塞（多次 e2e 复现，guard 存活 STAT Ss 但零 tick）；改为 20ms 短间隔墙上时钟轮询，6 次压测全过；根因疑似 Go runtime timer 与 detach/重启信号时序竞态，短轮询规避。
+- 【修复】ctl publish 的 sha256 应对整个 .pkg 计算（而非包内 manifest 的内层二进制哈希），与 agent 下载验签对象一致。
+- 【修复】config Duration 支持「d」单位（90d/168h），此前 time.ParseDuration 不认天。
+- 【修复】CA 目录导出 ca.CADirName（数据目录/ca），harness/ctl CA 路径对齐。
+- e2e 框架（test/e2e/harness.go）：go build 注入版本的真二进制、临时三端口 server、name 标签选机、每 agent 独立二进制副本与 restart.sh（nohup+kill $PPID 模拟 systemctl）、签名密钥对、WaitFor/Ctl/版本构建/发布 helper、失败 dump server/agent/guard 现场。
+- 6 个 e2e：注册上线、run 输出/退出码、cancel、离线扫描+补投（12s）、自升级全链路（打包/签名/发布/标签升级/验签/替换/guard 健康/结果上报/job succeeded/新版本 online，6/6 稳定）、默认降级拒绝。
+- 9.6 docker 资产就绪；本机 docker.io/auth.docker.io 与镜像站当前不可达，容器实跑在 CI 执行，脚本镜像不可达时显式 SKIP。
+- 最终门禁：gofmt clean、go vet、go test -race 全 22 包绿、linux amd64+arm64 静态编译、openspec validate --strict 通过、6 e2e 全绿。

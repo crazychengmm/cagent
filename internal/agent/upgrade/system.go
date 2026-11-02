@@ -30,6 +30,20 @@ func NewSystemdRestarter(unit string) *SystemdRestarter {
 	}
 }
 
+// NewRestarter 构造重启器：customCommand 非空时用 sh -c 执行（测试/非 systemd），
+// 否则使用 systemctl restart <unit>。
+func NewRestarter(unit, customCommand string) *SystemdRestarter {
+	if customCommand != "" {
+		return &SystemdRestarter{
+			Unit: unit,
+			Runner: func(_ string, args ...string) ([]byte, error) {
+				return exec.Command("/bin/sh", "-c", customCommand).CombinedOutput()
+			},
+		}
+	}
+	return NewSystemdRestarter(unit)
+}
+
 func (r *SystemdRestarter) Restart() error {
 	if r.SpawnGuard != nil {
 		if err := r.SpawnGuard(); err != nil {
@@ -45,24 +59,33 @@ func (r *SystemdRestarter) Restart() error {
 
 // SystemInstaller 用复制+rename 实现二进制替换，兼容跨文件系统。
 type SystemInstaller struct {
-	state     *UpgradeState
-	restarter Restarter
+	state             *UpgradeState
+	restarter         Restarter
+	rollbackRestarter Restarter
 }
 
-// NewSystemInstaller 构造安装器。
-func NewSystemInstaller(state *UpgradeState, restarter Restarter) *SystemInstaller {
-	return &SystemInstaller{state: state, restarter: restarter}
+// NewSystemInstaller 构造安装器；rollbackRestarter 可为 nil（回滚时用 restarter）。
+func NewSystemInstaller(state *UpgradeState, restarter Restarter, rollbackRestarter ...Restarter) *SystemInstaller {
+	i := &SystemInstaller{state: state, restarter: restarter}
+	if len(rollbackRestarter) > 0 {
+		i.rollbackRestarter = rollbackRestarter[0]
+	}
+	return i
 }
 
-// Stage 把验签通过的包写入暂存位置并置为可执行。
+// Stage 从验签通过的 tar.gz 包中解出二进制，写入暂存位置并置为可执行。
 func (i *SystemInstaller) Stage(pkg []byte) (string, error) {
 	if len(pkg) == 0 {
 		return "", fmt.Errorf("升级包为空")
 	}
+	binary, err := ExtractBinary(pkg)
+	if err != nil {
+		return "", fmt.Errorf("解包失败: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(i.state.StagedPath), 0o700); err != nil {
 		return "", err
 	}
-	if err := writeExecutable(i.state.StagedPath, pkg); err != nil {
+	if err := writeExecutable(i.state.StagedPath, binary); err != nil {
 		return "", err
 	}
 	return i.state.StagedPath, nil
@@ -102,8 +125,16 @@ func (i *SystemInstaller) Rollback() error {
 	return nil
 }
 
-// Restart 重启服务（生产由 systemd 完成；guard 进程在重启前已 detach）。
+// Restart 重启服务（生产由 systemd 完成；首次重启前已 detach guard）。
 func (i *SystemInstaller) Restart() error {
+	return i.restarter.Restart()
+}
+
+// RestartForRollback 回滚后的重启：guard 已在运行，不再 spawn 新 guard。
+func (i *SystemInstaller) RestartForRollback() error {
+	if i.rollbackRestarter != nil {
+		return i.rollbackRestarter.Restart()
+	}
 	return i.restarter.Restart()
 }
 

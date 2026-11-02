@@ -3,11 +3,10 @@ package cli
 import (
 	"context"
 	"io"
+	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/crazychengmm/cagent/internal/agent/identity"
 	agentupgrade "github.com/crazychengmm/cagent/internal/agent/upgrade"
 	"github.com/crazychengmm/cagent/internal/config"
 	"github.com/crazychengmm/cagent/internal/logging"
@@ -31,6 +30,7 @@ func runGuardMode(statePath, configPath, logLevel string, stderr io.Writer) int 
 		_, _ = stderr.Write([]byte(err.Error() + "\n"))
 		return exitError
 	}
+	logger.Info("guard 进程启动", "state", statePath, "config", configPath, "pid", os.Getpid())
 
 	cfg, err := config.LoadAgentConfig(configPath)
 	if err != nil {
@@ -42,19 +42,12 @@ func runGuardMode(statePath, configPath, logLevel string, stderr io.Writer) int 
 		logger.Error("guard 读取升级状态失败", "error", err.Error())
 		return exitError
 	}
-	ident, err := identity.Load(cfg.DataDir)
-	if err != nil {
-		logger.Error("guard 读取身份失败", "error", err.Error())
-		return exitError
-	}
-
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	reporter := agentupgrade.NewGuardReporter(ident, cfg.ControlAddress, logger)
-	// guard 自己的 Restart 只执行 systemctl（不再 spawn 新 guard）。
+	// guard 重启沿用 state 中的方式（systemctl 或注入命令），但不再 spawn 新 guard。
 	installer := agentupgrade.NewSystemInstaller(state,
-		agentupgrade.NewSystemdRestarter(state.Unit))
+		agentupgrade.NewRestarter(state.Unit, state.RestartCommand))
 	probe := &agentupgrade.FileHealthProbe{
 		DataDir:         cfg.DataDir,
 		ExpectedVersion: state.ToVersion,
@@ -62,17 +55,28 @@ func runGuardMode(statePath, configPath, logLevel string, stderr io.Writer) int 
 	deps := agentupgrade.Deps{
 		Installer:     installer,
 		Probe:         probe,
-		Reporter:      reporter,
 		HealthTimeout: agentupgrade.DefaultHealthTimeout,
 	}
 
 	cmd := &pb.UpgradeCommand{JobId: state.JobID, Version: state.ToVersion}
+	logger.Info("guard 开始健康门控", "expect", state.ToVersion, "data_dir", cfg.DataDir, "timeout", agentupgrade.DefaultHealthTimeout)
 	result := agentupgrade.GuardWatch(ctx, cmd, deps, state.FromVersion, state.JobID)
+	logger.Info("guard 门控结束", "state", result.State, "reason", result.Reason)
 
-	flushCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := reporter.Flush(flushCtx); err != nil {
-		logger.Error("guard 上报结果失败", "error", err.Error())
+	// 结果落盘，由重启后接管的 agent 通过其稳定主连接上报（避免短连接竞争）。
+	status := string(result.State)
+	if result.State == agentupgrade.StateRolledBack {
+		status = "rolled_back"
+	}
+	pending := &agentupgrade.PendingResult{
+		JobID:       state.JobID,
+		FromVersion: state.FromVersion,
+		ToVersion:   state.ToVersion,
+		Status:      status,
+		Message:     result.Reason,
+	}
+	if err := agentupgrade.SaveResult(cfg.DataDir, pending); err != nil {
+		logger.Error("guard 写升级结果失败", "error", err.Error())
 	}
 
 	if result.State == agentupgrade.StateSucceeded {
@@ -80,7 +84,7 @@ func runGuardMode(statePath, configPath, logLevel string, stderr io.Writer) int 
 	} else {
 		logger.Warn("升级已回滚", "version", state.ToVersion, "reason", result.Reason)
 	}
-	_ = agentupgrade.ClearState(statePath)
+	_ = agentupgrade.ClearState(agentupgrade.StatePath(cfg.DataDir))
 	agentupgrade.ClearHealthy(cfg.DataDir)
 	return exitOK
 }

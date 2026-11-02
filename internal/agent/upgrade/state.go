@@ -22,6 +22,8 @@ type UpgradeState struct {
 	BackupPath  string `json:"backup_path"`
 	StagedPath  string `json:"staged_path"`
 	Unit        string `json:"unit"`
+	// RestartCommand 非空时替代 systemctl（测试/非 systemd 场景）。
+	RestartCommand string `json:"restart_command,omitempty"`
 }
 
 // StatePath 返回升级状态文件路径。

@@ -117,6 +117,9 @@ func (l *Loop) runOnce(ctx context.Context) (time.Time, error) {
 	l.cfg.Logger.Info("已连接控制通道", "server", l.cfg.ServerAddr)
 
 	session := &session{cfg: l.cfg, client: client, stream: stream}
+	if l.cfg.OnConnected != nil {
+		l.cfg.OnConnected(ctx, session)
+	}
 	return connectedAt, session.run(ctx)
 }
 

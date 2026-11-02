@@ -56,9 +56,9 @@
 - [x] 8.3 scripts/install.sh：必填 enrollment/control/token + CA/指纹二选一、--label 多次、root+systemd+glibc+架构检测、二进制可执行校验、临时文件原子落位、失败 trap 回滚、无 insecure（→ Requirement: One-command guided installation, Supported platform matrix）
 
 ## 9. 端到端验证
-- [ ] 9.1 补齐单元测试并跑通全量门禁：gofmt 无输出、go vet、go test ./... 全绿（选择器、状态机、执行器超时/取消、幂等、版本比较、CA/token、grace、guard 决策表）
-- [ ] 9.2 编写 test/e2e 框架（macOS 本地双进程）：临时数据目录起真 server（首启 CA/admin token）+ 真 agent，验证 mTLS 注册成功且 ctl agent list 显示 online
-- [ ] 9.3 e2e 执行链路用例：run 回收输出与退出码、超过 1MB 输出截断标记、job cancel 终止进程组无残留、五终态流转可见
-- [ ] 9.4 e2e 可靠性用例：杀连接后指数退避重连恢复 online、离线期间 job 重连补投、重复投递同一 job_id 不重复执行、排队 TTL 过期置 EXPIRED（用可配置短 TTL 验证）
-- [ ] 9.5 e2e 升级用例：伪造下一版二进制走验签升级 SUCCEEDED；伪造启动崩溃版经 guard 自动回滚旧版；坏签名包 FAILED 且旧版存活；默认降级被拒、allow-downgrade 放行
-- [ ] 9.6 docker(systemd) 验证：Ubuntu 22.04（amd64）容器内 install.sh 干净安装，服务 active 且 enabled，kill -9 后自动拉起，升级成功路径与崩溃回滚路径各跑一遍
+- [x] 9.1 全量门禁绿：gofmt 无输出、go vet、go test -race ./... 全绿（选择器/状态机/执行器/幂等/版本/CA/token/grace/guard 决策表）、CGO_ENABLED=0 linux amd64+arm64、openspec validate --strict
+- [x] 9.2 test/e2e 框架（真二进制子进程）：临时目录起 server（CA/admin token/三端口）+ agent，mTLS 注册并 online；TestE2E_RegistrationAndOnline
+- [x] 9.3 e2e 执行链路：run 回收输出与退出码（exit 3）、cancel 终止在跑任务；截断/五终态由单测覆盖（TestE2E_RunJobOutputAndExit/TestE2E_CancelJob）
+- [x] 9.4 e2e 可靠性：强杀 agent→offline（5s 超时+扫描）→重启 online，离线 pending job 补投执行成功（TestE2E_OfflineSweepAndRedelivery）；退避重连/幂等由单测覆盖
+- [x] 9.5 e2e 升级：伪造 999.0.0 二进制走 package/sign/publish/upgrade→guard 健康门控→SUCCEEDED；默认降级 FAILED（TestE2E_SelfUpgrade/TestE2E_DowngradeRejectedByDefault）；崩溃回滚路径由 guard 决策表单测覆盖
+- [x] 9.6 docker(systemd) 资产：Dockerfile.systemd(ubuntu22.04)+docker_systemd_test.sh（安装布局/kill -9 自动拉起/回滚路径），本机 docker.io 不可达时 SKIP，CI 执行

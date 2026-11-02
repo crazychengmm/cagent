@@ -2,6 +2,7 @@ package ctl
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -18,6 +19,7 @@ func dial(configPath string, ctx context.Context, stderr io.Writer) (*grpc.Clien
 	}
 	conn, err := cfg.Dial(ctx)
 	if err != nil {
+		fmt.Fprintln(stderr, err)
 		return nil, err
 	}
 	return conn, nil

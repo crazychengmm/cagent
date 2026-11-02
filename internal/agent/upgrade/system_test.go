@@ -1,10 +1,13 @@
 package upgrade
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/crazychengmm/cagent/internal/release"
 )
 
 func TestSystemInstaller_StageActivateRollbackCommit(t *testing.T) {
@@ -32,8 +35,17 @@ func TestSystemInstaller_StageActivateRollbackCommit(t *testing.T) {
 		return nil
 	}})
 
+	// 打成 tar.gz 发布包后 Stage
+	newBin := filepath.Join(dir, "new-cagent")
+	if err := os.WriteFile(newBin, []byte("#!/bin/sh\necho new\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var pkg bytes.Buffer
+	if _, err := release.BuildPackage(&pkg, newBin, "2.0.0"); err != nil {
+		t.Fatal(err)
+	}
 	// Stage
-	staged, err := inst.Stage([]byte("#!/bin/sh\necho new\n"))
+	staged, err := inst.Stage(pkg.Bytes())
 	if err != nil {
 		t.Fatalf("Stage: %v", err)
 	}

@@ -43,5 +43,7 @@ type Config struct {
 
 	// OnStateChange 在连接建立/断开时回调（观测与测试用）。
 	OnStateChange func(connected bool)
-	Logger        *slog.Logger
+	// OnConnected 在控制流建立后回调（带流 ctx 与发送器），用于经主连接上报待处理结果。
+	OnConnected func(ctx context.Context, sender Sender)
+	Logger      *slog.Logger
 }

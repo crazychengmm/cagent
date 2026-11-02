@@ -18,6 +18,8 @@ import (
 )
 
 const (
+	// CADirName 是数据目录下存放 CA 与服务器叶子证书的子目录。
+	CADirName  = "ca"
 	caCertFile = "ca.crt"
 	caKeyFile  = "ca.key"
 

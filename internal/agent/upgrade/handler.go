@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -18,6 +19,9 @@ import (
 // DefaultSystemdUnit 是 agent 服务默认单元名。
 const DefaultSystemdUnit = "cagent.service"
 
+// dialWait 是下载升级包时建立控制连接的超时。
+const dialWait = 10 * time.Second
+
 // Handler 实现 control.UpgradeHandler：下载验签后执行升级编排。
 type Handler struct {
 	ident          *identity.Identity
@@ -29,6 +33,7 @@ type Handler struct {
 	tracker        ActiveTracker
 	logger         *slog.Logger
 	unit           string
+	restartCommand string
 
 	// inProcess 为 true 时 Prepare 后在同进程执行健康门控（测试用）；
 	// 生产为 false：Prepare 触发 systemctl 重启，健康门控由 detach 的 guard 完成。
@@ -46,6 +51,8 @@ type HandlerConfig struct {
 	Tracker        ActiveTracker
 	Logger         *slog.Logger
 	Unit           string
+	// RestartCommand 非空时替代 systemctl（测试/非 systemd 场景）。
+	RestartCommand string
 }
 
 // NewHandler 构造生产模式处理器。
@@ -64,6 +71,7 @@ func NewHandler(cfg HandlerConfig) *Handler {
 		tracker:        cfg.Tracker,
 		logger:         cfg.Logger,
 		unit:           unit,
+		restartCommand: cfg.RestartCommand,
 	}
 }
 
@@ -84,9 +92,9 @@ func (h *Handler) OnUpgrade(ctx context.Context, sender control.Sender, cmd *pb.
 	}
 	defer conn.Close()
 
-	dialCtx, cancel := context.WithTimeout(ctx, reporterDialWait)
+	dialCtx, cancel := context.WithTimeout(ctx, dialWait)
 	defer cancel()
-	if err := control.WaitReady(dialCtx, conn, reporterDialWait); err != nil {
+	if err := control.WaitReady(dialCtx, conn, dialWait); err != nil {
 		failUpgrade(reporter, "控制连接不可用: "+err.Error())
 		return
 	}
@@ -108,13 +116,14 @@ func (h *Handler) OnUpgrade(ctx context.Context, sender control.Sender, cmd *pb.
 		return
 	}
 	state := &UpgradeState{
-		JobID:       cmd.GetJobId(),
-		FromVersion: h.currentVersion,
-		ToVersion:   cmd.GetVersion(),
-		BinaryPath:  binaryPath,
-		BackupPath:  filepath.Join(h.dataDir, releaseDirName, backupFileName),
-		StagedPath:  filepath.Join(h.dataDir, releaseDirName, stagedFileName),
-		Unit:        h.unit,
+		JobID:          cmd.GetJobId(),
+		FromVersion:    h.currentVersion,
+		ToVersion:      cmd.GetVersion(),
+		BinaryPath:     binaryPath,
+		BackupPath:     filepath.Join(h.dataDir, releaseDirName, backupFileName),
+		StagedPath:     filepath.Join(h.dataDir, releaseDirName, stagedFileName),
+		Unit:           h.unit,
+		RestartCommand: h.restartCommand,
 	}
 	if err := os.MkdirAll(filepath.Dir(state.BackupPath), 0o700); err != nil {
 		failUpgrade(reporter, "准备 releases 目录失败: "+err.Error())
@@ -149,11 +158,13 @@ func (h *Handler) OnUpgrade(ctx context.Context, sender control.Sender, cmd *pb.
 }
 
 func (h *Handler) newInstaller(state *UpgradeState) Installer {
-	restarter := NewSystemdRestarter(state.Unit)
+	restarter := NewRestarter(state.Unit, h.restartCommand)
 	restarter.SpawnGuard = func() error {
 		return SpawnDetachedGuard(StatePath(h.dataDir), h.configPath)
 	}
-	return NewSystemInstaller(state, restarter)
+	// 回滚重启复用同一命令但不再 spawn guard（guard 已在运行）。
+	rollbackRestarter := NewRestarter(state.Unit, h.restartCommand)
+	return NewSystemInstaller(state, restarter, rollbackRestarter)
 }
 
 func failUpgrade(r Reporter, reason string) {

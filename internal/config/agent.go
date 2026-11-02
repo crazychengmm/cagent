@@ -39,6 +39,9 @@ type AgentConfig struct {
 	ServerCAFingerprint string `yaml:"server_ca_fingerprint"`
 	// SigningPubkeyFile 升级包 ed25519 签名公钥 PEM；为空时拒绝一切升级。
 	SigningPubkeyFile string `yaml:"signing_pubkey_file"`
+	// RestartCommand 非空时用 `sh -c` 执行该命令完成重启（测试/非 systemd 场景）；
+	// 为空（生产）时使用 systemctl restart cagent.service。
+	RestartCommand string `yaml:"restart_command"`
 	// DataDir 身份、证书、旧版本副本与升级状态目录。
 	DataDir string `yaml:"data_dir"`
 	// Labels 静态标签全集，随心跳上报。

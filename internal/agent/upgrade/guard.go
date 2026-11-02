@@ -117,15 +117,16 @@ func Prepare(ctx context.Context, jobID, currentVersion string,
 
 	report(pb.UpgradeEvent_STATUS_INSTALLING, "二进制已替换，重启服务")
 	if err := d.Installer.Restart(); err != nil {
-		return d.rollback(report, "重启失败: "+err.Error())
+		return d.rollback("重启失败: " + err.Error())
 	}
 	return Result{State: StateRestarted}
 }
 
 // GuardWatch 在独立 guard 进程中执行健康门控：通过则提交，失败回滚并重启旧版。
+// 结果事件不由此函数上报——调用方负责持久化结果，由重启后的 agent 主连接上报，
+// 以避免 guard 短连接与 agent 重连互相挤掉控制流。
 func GuardWatch(ctx context.Context, cmd *pb.UpgradeCommand, d Deps,
 	currentVersion, jobID string) Result {
-	report := reporter(d.Reporter, jobID, currentVersion, cmd.GetVersion())
 	health := d.HealthTimeout
 	if health <= 0 {
 		health = DefaultHealthTimeout
@@ -134,13 +135,11 @@ func GuardWatch(ctx context.Context, cmd *pb.UpgradeCommand, d Deps,
 	hctx, cancel := context.WithTimeout(ctx, health)
 	defer cancel()
 	if err := d.Probe.WaitHealthy(hctx, health); err != nil {
-		return d.rollback(report, "新版本健康检查失败: "+err.Error())
+		return d.rollback("新版本健康检查失败: " + err.Error())
 	}
 	if err := d.Installer.Commit(); err != nil {
-		report(pb.UpgradeEvent_STATUS_SUCCEEDED, "健康通过（旧副本清理失败: "+err.Error()+")")
-		return Result{State: StateSucceeded}
+		return Result{State: StateSucceeded, Reason: "健康通过（旧副本清理失败: " + err.Error() + "）"}
 	}
-	report(pb.UpgradeEvent_STATUS_SUCCEEDED, "新版本健康通过")
 	return Result{State: StateSucceeded}
 }
 
@@ -159,15 +158,21 @@ func reporter(r Reporter, jobID, from, to string) func(pb.UpgradeEvent_Status, s
 	}
 }
 
-// rollback 换回旧版、重启、上报回滚事件；返回 rolled_back 结果。
-func (d Deps) rollback(report func(pb.UpgradeEvent_Status, string), reason string) Result {
+// rollbackRestarter 是安装器在回滚场景下的可选重启能力（不再 spawn guard）。
+type rollbackRestarter interface {
+	RestartForRollback() error
+}
+
+// rollback 换回旧版并重启；返回 rolled_back/failed 结果。
+func (d Deps) rollback(reason string) Result {
 	if err := d.Installer.Rollback(); err != nil {
-		report(pb.UpgradeEvent_STATUS_FAILED, reason+"；回滚也失败: "+err.Error())
 		return Result{State: StateFailed, Reason: reason + "；回滚失败: " + err.Error()}
 	}
-	report(pb.UpgradeEvent_STATUS_ROLLED_BACK, reason)
-	if err := d.Installer.Restart(); err != nil {
-		report(pb.UpgradeEvent_STATUS_FAILED, "回滚后重启失败: "+err.Error())
+	if rr, ok := d.Installer.(rollbackRestarter); ok {
+		if err := rr.RestartForRollback(); err != nil {
+			return Result{State: StateFailed, Reason: reason + "；回滚后重启失败"}
+		}
+	} else if err := d.Installer.Restart(); err != nil {
 		return Result{State: StateFailed, Reason: reason + "；回滚后重启失败"}
 	}
 	return Result{State: StateRolledBack, Reason: reason}

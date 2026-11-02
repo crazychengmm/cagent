@@ -34,6 +34,9 @@ func SpawnDetachedGuard(statePath, configPath string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("启动 guard 进程: %w", err)
 	}
+	pid := cmd.Process.Pid
+	_ = os.WriteFile(filepath.Join(filepath.Dir(statePath), "guard.pid"),
+		[]byte(fmt.Sprintf("%d", pid)), 0o600)
 	// 不 Wait：guard 独立运行。
 	return cmd.Process.Release()
 }

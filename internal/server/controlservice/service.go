@@ -100,18 +100,21 @@ func (s *Service) Control(stream pb.ControlService_ControlServer) error {
 			}
 			return err
 		}
+		// 业务落库使用不随连接取消的 ctx：短连接（如升级 guard 上报）可能在
+		// 事件处理途中被新连接挤掉导致 session ctx 取消。
+		bg := context.WithoutCancel(ctx)
 		switch p := msg.Payload.(type) {
 		case *pb.AgentMessage_Heartbeat:
-			if err := s.handleHeartbeat(ctx, session, p.Heartbeat, peerCert); err != nil {
+			if err := s.handleHeartbeat(bg, session, p.Heartbeat, peerCert); err != nil {
 				return err
 			}
 		case *pb.AgentMessage_JobEvent:
-			if err := s.HandleJobEvent(ctx, p.JobEvent); err != nil {
+			if err := s.HandleJobEvent(bg, p.JobEvent); err != nil {
 				s.logger.Error("处理 JobEvent 失败",
 					"job_id", p.JobEvent.GetJobId(), "error", err.Error())
 			}
 		case *pb.AgentMessage_UpgradeEvent:
-			if err := s.HandleUpgradeEvent(ctx, p.UpgradeEvent); err != nil {
+			if err := s.HandleUpgradeEvent(bg, p.UpgradeEvent); err != nil {
 				s.logger.Error("处理 UpgradeEvent 失败",
 					"job_id", p.UpgradeEvent.GetJobId(), "error", err.Error())
 			}

@@ -49,7 +49,6 @@ const (
 )
 
 const (
-	caDirName      = "ca"
 	serverDBName   = "cagent-server.db"
 	adminTokenName = "admin_token"
 )
@@ -154,6 +153,7 @@ func runAgent(args []string, stderr io.Writer) int {
 		SigningPub:     signingPub,
 		Tracker:        manager,
 		Logger:         logger,
+		RestartCommand: cfg.RestartCommand,
 	})
 
 	logger.Info("agent 启动",
@@ -173,7 +173,15 @@ func runAgent(args []string, stderr io.Writer) int {
 		JobHandler:        manager,
 		UpgradeHandler:    upgradeHandler,
 		OnStateChange:     markHealthyOnConnect(cfg.DataDir, version.Version),
-		Logger:            logger,
+		OnConnected: func(ctx context.Context, sender control.Sender) {
+			// 升级结果由重启后的 agent 经稳定主连接上报（等待 guard 落盘）。
+			go func() {
+				if err := agentupgrade.ReportPendingResults(ctx, cfg.DataDir, sender); err != nil {
+					logger.Warn("升级结果等待/上报中断，将由新连接重试", "error", err.Error())
+				}
+			}()
+		},
+		Logger: logger,
 	})
 	if err != nil {
 		logger.Error("构造控制循环失败", "error", err.Error())
@@ -292,7 +300,7 @@ func runServer(args []string, stderr io.Writer) int {
 		return exitError
 	}
 
-	caDir := filepath.Join(cfg.DataDir, caDirName)
+	caDir := filepath.Join(cfg.DataDir, ca.CADirName)
 	rootCA, err := ca.LoadOrCreate(caDir)
 	if err != nil {
 		logger.Error("加载内置 CA 失败", "error", err.Error())
