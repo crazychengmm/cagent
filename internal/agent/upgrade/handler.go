@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -38,6 +39,10 @@ type Handler struct {
 	// inProcess 为 true 时 Prepare 后在同进程执行健康门控（测试用）；
 	// 生产为 false：Prepare 触发 systemctl 重启，健康门控由 detach 的 guard 完成。
 	inProcess bool
+
+	// 单飞锁：防止在线下发与重连补投并发触发两个升级操作同一二进制。
+	inFlightMu sync.Mutex
+	inFlight   bool
 }
 
 // HandlerConfig 是升级处理器配置。
@@ -76,8 +81,36 @@ func NewHandler(cfg HandlerConfig) *Handler {
 }
 
 // OnUpgrade 实现 control.UpgradeHandler。
-func (h *Handler) OnUpgrade(ctx context.Context, sender control.Sender, cmd *pb.UpgradeCommand) {
+//
+// 升级流程（下载/验签/grace/替换/重启）刻意不使用传入的 stream ctx：
+// 升级期间控制流可能因网络抖动或 agent 即将自重启而断开，但升级必须走完
+// （成功替换重启，或失败上报并保持旧版）。改用带总超时的独立 context。
+func (h *Handler) OnUpgrade(_ context.Context, sender control.Sender, cmd *pb.UpgradeCommand) {
+	// 单飞：同一时刻只允许一个升级流程（在线下发与重连补投可能并发到达）。
+	h.inFlightMu.Lock()
+	if h.inFlight {
+		h.inFlightMu.Unlock()
+		h.logger.Warn("已有升级在进行，忽略重复升级指令", "job_id", cmd.GetJobId())
+		return
+	}
+	h.inFlight = true
+	h.inFlightMu.Unlock()
+	defer func() {
+		h.inFlightMu.Lock()
+		h.inFlight = false
+		h.inFlightMu.Unlock()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultTotalTimeout)
+	defer cancel()
+
 	reporter := &StreamReporter{Sender: sender, JobID: cmd.GetJobId()}
+
+	// 未安装签名公钥时拒绝一切升级（而不是下载后才以验签失败告终）。
+	if len(h.signingPub) != ed25519.PublicKeySize {
+		failUpgrade(reporter, "agent 未配置升级签名公钥（signing_pubkey_file），拒绝升级")
+		return
+	}
 
 	tlsCfg, err := control.ClientTLSConfig(h.ident)
 	if err != nil {

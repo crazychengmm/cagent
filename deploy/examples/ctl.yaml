@@ -1,0 +1,12 @@
+# cagent ctl 配置示例（~/.config/cagent/ctl.yaml 或 /etc/cagent/ctl.yaml）
+
+# server admin 端口（9445）
+admin_address: "server.example.com:9445"
+# admin token（server 首启生成于 data_dir/admin_token，0600）
+admin_token: "cactl_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# server CA（用于校验管理端口证书）
+server_ca_file: "/etc/cagent/ca.crt"
+
+# 也可用环境变量覆盖：
+#   CAGENT_ADMIN_ADDR=server.example.com:9445
+#   CAGENT_ADMIN_TOKEN=cactl_xxx

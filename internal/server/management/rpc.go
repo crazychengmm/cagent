@@ -2,6 +2,7 @@ package management
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -206,6 +207,20 @@ func (s *Service) CancelJob(ctx context.Context,
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "下发取消失败: %v", err)
 	}
+	// 取消是显式运维操作，记录审计。
+	detail, _ := json.Marshal(map[string]any{
+		"job_id":   job.JobID,
+		"agent_id": job.AgentID,
+		"command":  job.Command,
+	})
+	_ = s.store.InsertAudit(ctx, store.AuditLog{
+		At:      s.now().UTC(),
+		Actor:   actorFromContext(ctx),
+		Action:  "job.cancel",
+		AgentID: job.AgentID,
+		JobID:   job.JobID,
+		Detail:  detail,
+	})
 	return &pb.CancelJobResponse{}, nil
 }
 

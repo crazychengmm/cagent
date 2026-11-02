@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/crazychengmm/cagent/internal/release"
 	"github.com/crazychengmm/cagent/internal/server/store"
 	pb "github.com/crazychengmm/cagent/proto/cagent/v1"
 )
@@ -19,6 +20,10 @@ const downloadChunkSize = 64 * 1024
 // DownloadRelease 向已认证 agent 流式发送指定版本的发布包。
 func (s *Service) DownloadRelease(req *pb.DownloadReleaseRequest,
 	stream pb.ControlService_DownloadReleaseServer) error {
+	// version 会拼入文件路径，严格校验语义版本以杜绝路径穿越。
+	if _, err := release.Parse(req.GetVersion()); err != nil {
+		return status.Errorf(codes.InvalidArgument, "版本非法: %v", err)
+	}
 	if _, err := s.store.GetRelease(stream.Context(), req.GetVersion()); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			return status.Errorf(codes.NotFound, "版本 %s 不存在", req.GetVersion())

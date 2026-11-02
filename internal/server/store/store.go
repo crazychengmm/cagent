@@ -86,10 +86,6 @@ func formatTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339Nano)
 }
 
-func nowText() string {
-	return formatTime(time.Now())
-}
-
 // nullableTime 把时间指针转成数据库可扫描类型；nil 存 NULL。
 func nullableTime(t *time.Time) any {
 	if t == nil {

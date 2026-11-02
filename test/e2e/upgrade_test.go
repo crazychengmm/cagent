@@ -40,11 +40,10 @@ func TestE2E_SelfUpgrade(t *testing.T) {
 			strings.Contains(h.Ctl("agent", "list"), "online")
 	}, "升级到 999.0.0 并上线")
 
-	// upgrade job 终态成功
-	jobs := h.Ctl("job", "list", "--status", "succeeded")
-	if !strings.Contains(jobs, "upgrade") {
-		t.Errorf("升级 job 未成功:\n%s", jobs)
-	}
+	// upgrade job 终态成功（result 上报落库略晚于 online 标记，轮询等待）
+	h.WaitFor(20*time.Second, func() bool {
+		return strings.Contains(h.Ctl("job", "list", "--status", "succeeded"), "upgrade")
+	}, "升级 job succeeded")
 }
 
 // TestE2E_DowngradeRejectedByDefault 验证默认拒绝降级。

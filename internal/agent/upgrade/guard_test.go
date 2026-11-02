@@ -60,15 +60,6 @@ func (f *fakeInstaller) Commit() error {
 	f.calls = append(f.calls, "commit")
 	return f.commitErr
 }
-func (f *fakeInstaller) callsFiltered(name string) []string {
-	var out []string
-	for _, c := range f.calls {
-		if c == name {
-			out = append(out, c)
-		}
-	}
-	return out
-}
 
 type fakeProbe struct{ err error }
 

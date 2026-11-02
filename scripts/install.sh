@@ -7,7 +7,7 @@
 #     --control-addr host:9444 \
 #     --token cagt_xxx \
 #     (--server-ca ca.pem | --fingerprint <sha256-hex>) \
-#     [--label k=v]... [--binary path]
+#     [--signing-pubkey release.pub] [--label k=v]... [--binary path]
 #
 # 不存在也不会提供任何 --insecure 选项。
 set -eu
@@ -18,6 +18,7 @@ CONTROL_ADDR=""
 TOKEN=""
 CA_FILE=""
 FINGERPRINT=""
+SIGNING_PUBKEY=""
 LABELS=""
 
 usage() {
@@ -30,6 +31,7 @@ usage() {
   --fingerprint     <sha256-hex> server 证书 SHA256 指纹（与 --server-ca 二选一）
   --label           <k=v>        静态标签，可重复
   --binary          <path>       待安装二进制（默认脚本目录下的 cagent）
+  --signing-pubkey  <file.pem>   升级包 ed25519 签名公钥（提供后才允许自升级）
 USAGE
 	exit 2
 }
@@ -46,6 +48,7 @@ while [ "$#" -gt 0 ]; do
 $2"; else LABELS="$2"; fi
 			shift 2 ;;
 		--binary)          BINARY_SRC="$2"; shift 2 ;;
+		--signing-pubkey)  SIGNING_PUBKEY="$2"; shift 2 ;;
 		-h|--help)         usage ;;
 		*) echo "未知参数: $1" >&2; usage ;;
 	esac
@@ -112,6 +115,16 @@ else
 	CA_LINE="server_ca_fingerprint: \"$FINGERPRINT\""
 fi
 
+# 升级签名公钥（可选；提供后 agent 才会接受签名自升级）
+SIGNING_LINE=""
+if [ -n "$SIGNING_PUBKEY" ]; then
+	[ -f "$SIGNING_PUBKEY" ] || fail "签名公钥不存在: $SIGNING_PUBKEY"
+	SIGNING_DST=/etc/cagent/release.pub
+	install -m 0644 "$SIGNING_PUBKEY" "$SIGNING_DST"
+	ROLLBACK_FILES="$ROLLBACK_FILES $SIGNING_DST"
+	SIGNING_LINE="signing_pubkey_file: \"$SIGNING_DST\""
+fi
+
 # 标签 YAML
 LABEL_YAML="{}"
 if [ -n "$LABELS" ]; then
@@ -136,6 +149,7 @@ enrollment_address: "$ENROLLMENT_ADDR"
 control_address: "$CONTROL_ADDR"
 enrollment_token: "$TOKEN"
 $CA_LINE
+$SIGNING_LINE
 data_dir: "/var/lib/cagent"
 job_concurrency: 4
 $LABEL_YAML

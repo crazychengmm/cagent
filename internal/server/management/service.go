@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -208,8 +207,9 @@ func (s *Service) ListReleases(ctx context.Context,
 }
 
 func validateMeta(meta *pb.ReleaseMeta) error {
-	if meta.GetVersion() == "" || strings.ContainsAny(meta.GetVersion(), " /\t\n") {
-		return errors.New("version 非法")
+	// 严格语义版本：version 同时用作文件路径片段，必须杜绝路径穿越。
+	if _, err := release.Parse(meta.GetVersion()); err != nil {
+		return errors.New("version 非法（必须为 x.y.z）: " + err.Error())
 	}
 	if meta.GetSize() <= 0 {
 		return errors.New("size 必须为正")

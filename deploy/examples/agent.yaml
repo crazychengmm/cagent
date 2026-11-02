@@ -1,0 +1,31 @@
+# cagent agent 配置示例（安装到 /etc/cagent/config.yaml，权限 0600）
+
+# server 注册服务地址（9443 enrollment）
+enrollment_address: "server.example.com:9443"
+# server 控制服务地址（9444 mTLS 双向流）
+control_address: "server.example.com:9444"
+
+# 首次注册用的一次性引导令牌；注册成功生成身份后可删除本字段
+# （ctl token create 创建，cagt_ 前缀）
+enrollment_token: "cagt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+# 信任锚点二选一：server CA 证书文件，或证书 SHA256 指纹
+server_ca_file: "/etc/cagent/ca.crt"
+# server_ca_fingerprint: "aa:bb:cc:..."
+
+# 升级包 ed25519 签名公钥（ctl release keygen 生成；配置后才接受自升级）
+signing_pubkey_file: "/etc/cagent/release.pub"
+
+# 状态目录（0700）
+data_dir: "/var/lib/cagent"
+
+# 心跳间隔（默认 15s）
+heartbeat_interval: 15s
+# 本地并发任务数（默认 4）
+job_concurrency: 4
+
+# 静态标签（注册后随心跳上报，用于标签选机）
+labels:
+  env: prod
+  role: db
+  region: cn-north-1

@@ -115,6 +115,7 @@ sudo ./scripts/install.sh \
   --control-addr    server.example.com:9444 \
   --token           cagt_xxxx \
   --server-ca       ca.crt \
+  --signing-pubkey  release.pub \
   --label env=prod --label role=db
 ```
 
@@ -200,6 +201,18 @@ agent 收到 UpgradeCommand
 ```
 
 server 侧数据在 `/var/lib/cagent-server/`（SQLite、CA、发布包 `releases/`）。
+
+配置示例见 [`deploy/examples/`](deploy/examples)（agent/server/ctl）。
+
+## 运维与数据保留
+
+- 服务日志走 journald（`journalctl -u cagent`），由 systemd 自动轮转
+- agent 本地执行审计 `audit.log` 为追加 JSONL，建议用 logrotate 管理（按天/大小轮转）
+- server 数据（SQLite + 发布包）位于 `/var/lib/cagent-server/`：
+  - `cagent-server.db` 保存 agent、token、job（含输出，单任务上限 1MB）、审计
+  - 任务输出与历史记录只增不删；如需控制体积，可定期备份后用 SQLite 按
+    `finished_at` 清理旧 `job_output`（job 元数据与审计行可保留更久以满足合规）
+- 备份：停服后复制整个数据目录即可（含 CA 密钥与 SQLite），恢复时保持 0600/0700 权限
 
 ## 测试
 

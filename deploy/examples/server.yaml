@@ -1,0 +1,28 @@
+# cagent server 配置示例（安装到 /etc/cagent/server.yaml，权限 0600）
+
+# 三个监听端口
+enrollment_listen: ":9443"   # agent 注册（单向 TLS + token）
+control_listen:    ":9444"   # agent 控制通道（mTLS）
+admin_listen:      ":9445"   # ctl 管理 API（TLS + admin token）
+
+# 数据目录（SQLite、内置 CA、发布包；0700）
+data_dir: "/var/lib/cagent-server"
+
+# 服务器叶子证书 SAN（首启自动生成自签 CA 与证书）
+server_cert_hosts:
+  - "server.example.com"
+  - "10.0.0.1"
+  - "127.0.0.1"
+
+# agent 证书有效期（默认 90 天，到期前自动续签）
+agent_cert_validity: 90d
+# enrollment token 默认有效期
+enrollment_token_ttl: 168h
+
+# 心跳多久无响应判 agent 离线（默认 45s）
+heartbeat_timeout: 45s
+# 离线排队任务多久过期（默认 24h）
+queue_ttl: 24h
+
+# 发布包签名公钥：配置后 publish 时服务端也校验签名（可选纵深防御）
+# release_signing_pubkey_file: "/etc/cagent/release.pub"

@@ -348,3 +348,17 @@
 - 6 个 e2e：注册上线、run 输出/退出码、cancel、离线扫描+补投（12s）、自升级全链路（打包/签名/发布/标签升级/验签/替换/guard 健康/结果上报/job succeeded/新版本 online，6/6 稳定）、默认降级拒绝。
 - 9.6 docker 资产就绪；本机 docker.io/auth.docker.io 与镜像站当前不可达，容器实跑在 CI 执行，脚本镜像不可达时显式 SKIP。
 - 最终门禁：gofmt clean、go vet、go test -race 全 22 包绿、linux amd64+arm64 静态编译、openspec validate --strict 通过、6 e2e 全绿。
+
+### 2026-11-02 生产化 Review 加固（发布前终审）
+按生产可用标准做全量代码审查（staticcheck 2026.2.2 + 人工并发/安全/资源审查）：
+- 【并发】升级 OnUpgrade 改用独立 context（DefaultTotalTimeout 10m），不随控制流断开取消，避免慢网络/抖动中断下载替换；此前定义的 10m 总超时未使用，已接通。
+- 【并发】升级单飞锁 inFlight：在线下发与重连补投可能并发到达同一 agent，现同一时刻只允许一个升级流程，重复指令忽略并告警。
+- 【安全·路径穿越】release 版本号会拼入包文件路径；publish 元数据与 DownloadRelease 均改为严格 release.Parse(x.y.z) 校验，杜绝 ../ 穿越（原先仅拒绝含 / 字符，纵深防御不足）。
+- 【资源】ReportPendingResults 智能窗口：正常连接（无 upgrade-state.json）仅等待 500ms 即退出，检测到升级进行中才延长到 70s；避免每条控制流都挂一个长生命周期 goroutine。
+- 【健壮】agent 未配置签名公钥时在下载前明确拒绝升级（此前要等下载后验签才失败）。
+- 【审计】ctl job cancel 是显式运维操作，补 job.cancel 审计（操作者/agent/命令）。
+- 【安装】install.sh 新增 --signing-pubkey，安装时分发 ed25519 发布公钥，装完即具备签名自升级能力；写入 config。
+- 【可运维性】新增 deploy/examples/{agent,server,ctl}.yaml 生产配置示例；README 增「运维与数据保留」章节（journald/logrotate/SQLite 备份与输出清理）。
+- 【测试】根治 SelfUpgrade e2e 偶发失败：job succeeded 断言从「online 后立即查一次」改为轮询等待（result 落库天然晚于 online 标记）；高负载（yes×6）下自升级连跑 10/10、完整 e2e 3 轮全绿。
+- 清理 staticcheck 报告的未使用函数（nowText、callsFiltered）。
+- 终审门禁：gofmt clean、go vet、staticcheck 干净（仅测试内 crypto deprecation 为标准用法）、go test -race 23 包全绿无竞争、CGO 静态 linux amd64/arm64、openspec validate --strict、e2e 多轮稳定。
