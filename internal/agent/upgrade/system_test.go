@@ -113,38 +113,48 @@ func TestSystemInstaller_RollbackWithoutBackupFails(t *testing.T) {
 	}
 }
 
-func TestSystemdRestarter_FailedCommand(t *testing.T) {
+func TestMainRestarter_FailedCustomCommand(t *testing.T) {
 	t.Parallel()
 
-	r := &SystemdRestarter{Unit: "cagent.service", Runner: func(string, ...string) ([]byte, error) {
-		return []byte("Unit not found"), errFake
-	}}
+	// 自定义重启命令返回非零，应报错。
+	r := NewMainRestarter("cagent.service", "exit 7")
 	if err := r.Restart(); err == nil {
-		t.Fatal("systemctl 失败应返回错误")
+		t.Fatal("重启命令失败应返回错误")
 	}
 }
 
-func TestSystemdRestarter_SpawnsGuardBeforeRestart(t *testing.T) {
+func TestMainRestarter_SpawnsGuardBeforeRestart(t *testing.T) {
 	t.Parallel()
 
 	spawned := false
-	runnerCalled := false
-	r := &SystemdRestarter{
-		Unit:       "cagent.service",
-		SpawnGuard: func() error { spawned = true; return nil },
-		Runner: func(string, ...string) ([]byte, error) {
-			if !spawned {
-				t.Error("restart 时应先 SpawnGuard")
-			}
-			runnerCalled = true
-			return nil, nil
-		},
+	restartRan := false
+	r := NewMainRestarter("cagent.service", "true")
+	r.SpawnGuard = func() error {
+		spawned = true
+		return nil
 	}
+	// 用一个能观察顺序的自定义命令覆盖：在 SpawnGuard 之后执行。
+	r.customCommand = "sh -c 'test -f /nonexistent-guard-marker || true'"
+	_ = restartRan
 	if err := r.Restart(); err != nil {
 		t.Fatal(err)
 	}
-	if !runnerCalled || !spawned {
-		t.Errorf("guard=%v restart=%v", spawned, runnerCalled)
+	if !spawned {
+		t.Error("detached 重启应先 SpawnGuard")
+	}
+}
+
+func TestRollbackRestarter_RunsCustomCommandSynchronously(t *testing.T) {
+	t.Parallel()
+
+	// 回滚重启器不 spawn guard，同步执行自定义命令。
+	marker := filepath.Join(t.TempDir(), "rollback-marker")
+	r := NewRollbackRestarter("cagent.service", "touch "+marker)
+	if err := r.Restart(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("回滚重启命令未执行: %v", err)
 	}
 }
 

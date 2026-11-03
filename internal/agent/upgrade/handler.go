@@ -177,7 +177,10 @@ func (h *Handler) OnUpgrade(_ context.Context, sender control.Sender, cmd *pb.Up
 	}
 	prepared := Prepare(ctx, cmd.GetJobId(), h.currentVersion, cmd, pkg, deps)
 	if prepared.State != StateRestarted {
+		// 早期失败（版本门控/grace/验签/替换）不会重启，清理本进程写的现场，
+		// 避免残留 state 干扰后续升级（guard 只在真正重启后才接管）。
 		h.logger.Error("升级在重启前失败", "reason", prepared.Reason)
+		_ = ClearState(StatePath(h.dataDir))
 		return
 	}
 	h.logger.Info("升级重启已触发", "version", cmd.GetVersion())
@@ -191,12 +194,19 @@ func (h *Handler) OnUpgrade(_ context.Context, sender control.Sender, cmd *pb.Up
 }
 
 func (h *Handler) newInstaller(state *UpgradeState) Installer {
-	restarter := NewRestarter(state.Unit, h.restartCommand)
+	// 主重启器：detach restart（systemd-run 独立 cgroup），重启前 spawn guard。
+	restarter := NewMainRestarter(state.Unit, h.restartCommand)
 	restarter.SpawnGuard = func() error {
-		return SpawnDetachedGuard(StatePath(h.dataDir), h.configPath)
+		// 关键：guard 用升级前的可信旧副本（Activate 已备份到 BackupPath）启动，
+		// 而非刚替换的新版本，保证新版本损坏时 guard 仍能可靠回滚。
+		guardBinary := state.BackupPath
+		if _, err := os.Stat(guardBinary); err != nil {
+			guardBinary = "" // 回退到自身（测试场景）
+		}
+		return SpawnDetachedGuard(StatePath(h.dataDir), h.configPath, guardBinary)
 	}
-	// 回滚重启复用同一命令但不再 spawn guard（guard 已在运行）。
-	rollbackRestarter := NewRestarter(state.Unit, h.restartCommand)
+	// 回滚重启器：guard 已在独立 cgroup，同步执行即可，不再 spawn guard。
+	rollbackRestarter := NewRollbackRestarter(state.Unit, h.restartCommand)
 	return NewSystemInstaller(state, restarter, rollbackRestarter)
 }
 

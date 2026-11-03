@@ -15,24 +15,50 @@
 
 ## 架构
 
-```
-┌──────────────┐   9443 enrollment（单向 TLS + 一次性 token）
-│              │ ────────────────────────────────────────────────┐
-│              │   9444 control（mTLS 双向流：心跳/任务/输出/升级） │
-│   server     │ ◄──────────────────────────────────────────────► │  agent (systemd)
-│ (SQLite+CA)  │                                                   │  /usr/local/bin/cagent
-│              │   9445 admin（TLS + Bearer token，仅 ctl）        │
-└──────┬───────┘ ◄───────────────────────────────────────────────┘
-       │
-   cagent ctl（token/agent/job/release/upgrade 管理）
+```mermaid
+flowchart LR
+    subgraph control["控制面（单 server 进程）"]
+        direction TB
+        CA["内置 CA<br/>ECDSA P-256"]
+        DB[("SQLite (WAL)<br/>agents · tokens<br/>jobs · audit · releases")]
+        SVC["gRPC 服务"]
+        SVC --- CA
+        SVC --- DB
+    end
+
+    subgraph nodes["受控节点（systemd）"]
+        direction TB
+        A1["agent · /usr/local/bin/cagent"]
+        A2["agent · /usr/local/bin/cagent"]
+        An["agent …（≤ 1000）"]
+    end
+
+    OPS["运维人员<br/>cagent ctl"]
+
+    OPS <-."9445 · admin<br/>TLS + Bearer token".-> SVC
+    A1 <-."9443 · enrollment<br/>单向 TLS + 一次性 token（仅注册）".-> SVC
+    A2 <-."9444 · control<br/>mTLS 双向流：心跳 / 任务 / 输出 / 升级".-> SVC
+    An <-."9444 · control（mTLS）".-> SVC
+
+    classDef plane fill:#eef4ff,stroke:#3b6fb6,stroke-width:1px;
+    classDef node fill:#f4f6f8,stroke:#5a6b7b,stroke-width:1px;
+    classDef ops fill:#fff4e6,stroke:#c97a1f,stroke-width:1px;
+    class control plane;
+    class nodes node;
+    class OPS ops;
 ```
 
-- **EnrollmentService（9443）**：仅注册可达，一次性 token + 服务器 CA 锚点，不提供任何 insecure 选项
-- **ControlService（9444）**：agent 证书强制校验，吊销即时踢线；一条双向流承载心跳、任务下发/事件、升级指令/下载
-- **ManagementService（9445）**：管理面，全部方法经 admin token 拦截器鉴权
+**三条独立链路（单一二进制 `cagent server` 暴露三个端口）**
 
-可靠性设计：agent 断线指数退避自动重连；离线任务在重连后按顺序补投；排队任务 24h TTL 过期；
-任务终态机 CAS 防回退；同 job_id 重发幂等不重复执行。
+| 端口 | 服务 | 认证 | 用途 |
+|---|---|---|---|
+| 9443 | EnrollmentService | 服务器 TLS + 一次性 enrollment token | 仅首次注册可达，签发 mTLS 身份证书 |
+| 9444 | ControlService | **强制双向 mTLS**（吊销即时踢线） | 一条双向流承载心跳、任务下发/事件、输出、升级指令与包下载 |
+| 9445 | ManagementService | 服务器 TLS + admin Bearer token | 仅 `cagent ctl` 使用，全部方法经拦截器鉴权 |
+
+**可靠性设计**：agent 断线指数退避自动重连；离线任务重连后按序补投；排队任务 24h TTL 过期；
+任务终态机 CAS 防回退；同 `job_id` 重发幂等不重复执行；升级结果由重启后稳定主连接上报，
+避免短连接与重连竞争。
 
 ## 能力清单
 
@@ -167,22 +193,59 @@ token 管理：`cagent ctl token list | revoke <id>`。
 
 ## 自升级与回滚机制
 
-```
-ctl upgrade ─► server 为每台匹配 agent 创建 upgrade job（复用排队/补投/幂等）
-                    │
-agent 收到 UpgradeCommand
-  1. 版本门控（默认拒绝降级）
-  2. grace：等待运行中任务结束（≤2 分钟，不强杀）
-  3. mTLS 流式下载 → 校验 大小 → SHA256 → ed25519 签名，任一不符拒装
-  4. 暂存 → 备份当前二进制 → 原子替换
-  5. detach 独立 guard 进程（Setsid）→ systemctl restart
-  6. 新版本启动 → 首次 mTLS 心跳成功写健康标记
-  7. guard 在 60s 内观察到标记 → 清理旧副本，上报 SUCCEEDED
-     未观察到（崩溃/无心跳）→ 换回旧二进制 → 重启 → 上报 ROLLED_BACK
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Ops as 运维（ctl）
+    participant Srv as server
+    participant Old as agent（旧版本）
+    participant Gd as guard（独立进程）
+    participant New as agent（新版本）
+
+    Ops->>Srv: upgrade --release 2.0.0 --selector env=canary
+    Note over Srv: 为每台匹配 agent 创建 upgrade job<br/>（复用排队 / 补投 / 幂等）
+    Srv->>Old: UpgradeCommand（在线下发或重连补投）
+
+    Note over Old: ① 版本门控（默认拒绝降级）<br/>② grace：等待运行中任务（≤2min，不强杀）
+    Old->>Srv: DownloadRelease（mTLS 流）
+    Srv-->>Old: 发布包分块
+    Note over Old: ③ 三重验真：大小 → SHA256 → ed25519 签名<br/>任一不符即拒装，旧版继续运行
+
+    Note over Old: ④ 暂存 → 备份旧二进制 → 原子替换
+    Old->>Gd: ⑤ Setsid 拉起独立 guard（脱离进程组）
+    Old->>Old: ⑥ systemctl restart（旧进程退出）
+
+    New->>Srv: ⑦ 新版本建立 mTLS 连接并首次心跳成功
+    Note over New: 写 upgrade-healthy 标记
+
+    alt 60s 内健康通过
+        Gd->>Gd: 清理旧副本（Commit）
+        New->>Srv: 经稳定主连接上报 SUCCEEDED
+    else 新版本崩溃 / 未上报心跳
+        Gd->>Gd: 换回旧二进制并重启（Rollback）
+        New->>Srv: 旧版恢复后上报 ROLLED_BACK
+    end
 ```
 
-设计要点：升级最终结果由**重启后的 agent 经自己的稳定主连接**上报（写
-`upgrade-result.json`），避免 guard 短连接与 agent 重连竞争控制流。
+设计要点：
+
+- **guard 与 systemd cgroup 解耦**：生产环境用 `systemd-run` 把 guard 放进独立的
+  transient unit（`cagent-upgrade-*.service`，`--collect` 退出即回收）。仅 `Setsid`
+  脱离进程组仍处于 `cagent.service` 的 cgroup 中，会在 `systemctl restart` 时被
+  `KillMode=control-group` 一起杀掉；独立 unit 才能在服务重启期间存活
+- **restart 也脱离 cgroup**：agent 不能同步执行 `systemctl restart cagent.service`
+  （会把发起命令的自己一并 SIGTERM），重启动作同样经 `systemd-run` 的独立 oneshot
+  unit 延迟执行；非 systemd 环境回退为 `Setsid` 脱离进程（测试用注入命令）
+- **guard 运行可信旧二进制**：guard 由升级前备份的 `cagent.old` 启动，而非刚
+  替换的新版本。否则一旦新版本损坏（崩溃/无心跳/行为异常），guard 自己也是坏的，
+  将永远无法回滚——这是自升级最关键的不变量
+- **健康判据是真实通信**：新版本必须在 60s 内通过 mTLS 心跳（而非仅进程存活）；
+  有缺陷的新版本（进程活着但无法建连）同样会被判定不健康并自动回滚
+- **早期失败清理现场**：版本门控/grace/验签/替换失败（不触发重启）时由主进程
+  清理 `upgrade-state.json`，避免残留干扰后续升级；guard 路径则在退出时清理
+- **结果走主连接**：guard 只写 `upgrade-result.json`，由重启后接管的 agent 经
+  自己的稳定主连接上报，避免 guard 短连接与 agent 重连竞争控制流
+- **升级单飞**：同一 agent 同一时刻只允许一个升级流程，防止在线下发与补投并发
 
 ---
 

@@ -45,9 +45,9 @@ func runGuardMode(statePath, configPath, logLevel string, stderr io.Writer) int 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// guard 重启沿用 state 中的方式（systemctl 或注入命令），但不再 spawn 新 guard。
+	// guard 自身已在独立 cgroup（systemd-run unit），回滚重启可同步执行。
 	installer := agentupgrade.NewSystemInstaller(state,
-		agentupgrade.NewRestarter(state.Unit, state.RestartCommand))
+		agentupgrade.NewRollbackRestarter(state.Unit, state.RestartCommand))
 	probe := &agentupgrade.FileHealthProbe{
 		DataDir:         cfg.DataDir,
 		ExpectedVersion: state.ToVersion,

@@ -362,3 +362,12 @@
 - 【测试】根治 SelfUpgrade e2e 偶发失败：job succeeded 断言从「online 后立即查一次」改为轮询等待（result 落库天然晚于 online 标记）；高负载（yes×6）下自升级连跑 10/10、完整 e2e 3 轮全绿。
 - 清理 staticcheck 报告的未使用函数（nowText、callsFiltered）。
 - 终审门禁：gofmt clean、go vet、staticcheck 干净（仅测试内 crypto deprecation 为标准用法）、go test -race 23 包全绿无竞争、CGO 静态 linux amd64/arm64、openspec validate --strict、e2e 多轮稳定。
+
+### 2026-11-03 OrbStack 真实 Ubuntu/systemd 验证：发现并修复两个 cgroup 级自升级缺陷（9.6 实跑）
+用 OrbStack 创建真实 Ubuntu 22.04 arm64 机器（PID1=systemd、glibc 2.35），完整验证 install.sh/systemd/注册/任务/自升级/回滚/降级，捕获到单测与注入式 e2e 无法发现的两个真实缺陷：
+- 【缺陷 1·自杀式重启】agent 在自己服务的 cgroup 内同步执行 systemctl restart cagent.service，systemd 以 KillMode=control-group 停止服务时把发起命令的 agent 自身与 systemctl 一起 SIGTERM（exec 返回 signal: terminated），与服务启停竞争。修复：主重启动作改由 systemd-run 创建独立 cgroup 的 oneshot unit（cagent-restart-*）延迟 1s 执行，agent 不等自身被杀。
+- 【缺陷 2·guard 不可信，更关键】guard 最初用“当前可执行文件”启动，而它在二进制已替换为新版本后才真正运行——新版本一旦损坏（实测构造了进程存活但永不建连的 4.0.x），guard 自己也是坏的，永远无法回滚。实测抓取 Go 栈确认 guard 跑的是 fakeagent 的 30 分钟 Sleep。修复：guard 一律用升级前的可信旧副本（Activate 备份的 BackupPath=cagent.old）启动，SpawnDetachedGuard 增加 guardBinary 参数，坏版本再也无法让回滚失效。
+- 配套：rollback 增加目录 fsync 与替换后版本确认；回滚重启器用独立 cgroup 但同步执行（guard 不在服务 cgroup 内）；handler 早期失败（门控/grace/验签/替换）清理 upgrade-state.json 防残留；rollbackRestarter 不再 spawn guard。
+- 真实环境实测结论（Ubuntu 22.04 arm64 + systemd 249）：① install.sh 一键安装 active+enabled、0700/0600 权限正确、mTLS 自动注册 online；② kill -9 后 Restart=always 自动拉起且身份复用；③ 远程任务输出/退出码/双端审计正确；④ 健康升级 2.1.0→2.1.1 门控 1s 通过、job succeeded、旧副本与 transient unit 全部清理；⑤ 损坏版 4.0.1 60s 门控超时后自动回滚 3.1.0 并 online，job failed 原因明确（trace: 健康门控超时 last=3.1.0）；⑥ 默认降级 3.1.0→3.0.0 被拒。
+- 新增 TestSpawnGuard_UsesTrustedOldBinary 等回归测试；README 用 Mermaid 重画架构图与时序图（用户要求），并补充 systemd cgroup 解耦、可信 guard 二进制等设计要点。
+- 说明：e2e 注入重启脚本（非 systemd）与生产（systemd-run）走两条路径，正好互补——前者验证编排/状态机，后者暴露真实 init 系统语义；二者都必须保留。

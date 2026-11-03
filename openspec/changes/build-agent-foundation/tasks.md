@@ -61,4 +61,4 @@
 - [x] 9.3 e2e 执行链路：run 回收输出与退出码（exit 3）、cancel 终止在跑任务；截断/五终态由单测覆盖（TestE2E_RunJobOutputAndExit/TestE2E_CancelJob）
 - [x] 9.4 e2e 可靠性：强杀 agent→offline（5s 超时+扫描）→重启 online，离线 pending job 补投执行成功（TestE2E_OfflineSweepAndRedelivery）；退避重连/幂等由单测覆盖
 - [x] 9.5 e2e 升级：伪造 999.0.0 二进制走 package/sign/publish/upgrade→guard 健康门控→SUCCEEDED；默认降级 FAILED（TestE2E_SelfUpgrade/TestE2E_DowngradeRejectedByDefault）；崩溃回滚路径由 guard 决策表单测覆盖
-- [x] 9.6 docker(systemd) 资产：Dockerfile.systemd(ubuntu22.04)+docker_systemd_test.sh（安装布局/kill -9 自动拉起/回滚路径），本机 docker.io 不可达时 SKIP，CI 执行
+- [x] 9.6 真实 systemd 验证（OrbStack Ubuntu 22.04 arm64）：install.sh 安装/enabled、kill -9 拉起、注册/任务/审计、健康升级 2.1.0→2.1.1、损坏版 60s 门控超时自动回滚、降级拒绝——全部实测通过；docker_systemd_test.sh 作 CI 等价资产（registry 不可达时 SKIP）

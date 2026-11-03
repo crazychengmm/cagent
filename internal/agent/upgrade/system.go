@@ -1,11 +1,14 @@
 package upgrade
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // Restarter 触发 agent 服务重启（systemd）。
@@ -13,48 +16,84 @@ type Restarter interface {
 	Restart() error
 }
 
-// SystemdRestarter 通过 systemctl 重启单元；重启前可 detach 一个 guard 进程。
+// SystemdRestarter 触发 agent 服务重启。
+//
+// 关键约束：agent 主进程运行在 cagent.service 的 cgroup 内，不能同步执行
+// `systemctl restart cagent.service`——systemd 以 KillMode=control-group
+// 停止服务时会把发起命令的 agent 自身连同 systemctl 子进程一起 SIGTERM
+// （实测 exec 返回 "signal: terminated"），与服务启停产生竞争。
+// 因此主重启器（detached=true）把 restart 动作放进 systemd-run 的独立
+// transient unit（独立 cgroup）延迟执行，agent 不等待自身被杀。
+// guard 自身已在独立 cgroup，回滚重启可同步执行（detached=false）。
 type SystemdRestarter struct {
-	Unit       string
-	SpawnGuard func() error
-	Runner     func(name string, args ...string) ([]byte, error)
+	Unit          string
+	customCommand string
+	detached      bool
+	SpawnGuard    func() error
 }
 
-// NewSystemdRestarter 构造默认 systemctl 重启器。
-func NewSystemdRestarter(unit string) *SystemdRestarter {
-	return &SystemdRestarter{
-		Unit: unit,
-		Runner: func(name string, args ...string) ([]byte, error) {
-			return exec.Command(name, args...).CombinedOutput()
-		},
-	}
+// NewMainRestarter 构造主 agent 使用的重启器（detach restart）。
+func NewMainRestarter(unit, customCommand string) *SystemdRestarter {
+	return &SystemdRestarter{Unit: unit, customCommand: customCommand, detached: true}
 }
 
-// NewRestarter 构造重启器：customCommand 非空时用 sh -c 执行（测试/非 systemd），
-// 否则使用 systemctl restart <unit>。
-func NewRestarter(unit, customCommand string) *SystemdRestarter {
-	if customCommand != "" {
-		return &SystemdRestarter{
-			Unit: unit,
-			Runner: func(_ string, args ...string) ([]byte, error) {
-				return exec.Command("/bin/sh", "-c", customCommand).CombinedOutput()
-			},
-		}
-	}
-	return NewSystemdRestarter(unit)
+// NewRollbackRestarter 构造 guard 回滚使用的重启器。
+// guard 运行在独立 systemd-run unit（自己的 cgroup），同步执行
+// `systemctl restart cagent.service` 不会把 guard 自己杀掉，因此直接同步重启。
+func NewRollbackRestarter(unit, customCommand string) *SystemdRestarter {
+	return &SystemdRestarter{Unit: unit, customCommand: customCommand, detached: false}
 }
 
 func (r *SystemdRestarter) Restart() error {
-	if r.SpawnGuard != nil {
+	if r.detached && r.SpawnGuard != nil {
 		if err := r.SpawnGuard(); err != nil {
 			return fmt.Errorf("启动 guard: %w", err)
 		}
 	}
-	out, err := r.Runner("systemctl", "restart", r.Unit)
+
+	if r.customCommand != "" {
+		// 测试/非 systemd：customCommand 自身负责 detach（如 nohup + kill $PPID）。
+		out, err := exec.Command("/bin/sh", "-c", r.customCommand).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("自定义重启命令失败: %w: %s", err, string(out))
+		}
+		return nil
+	}
+
+	if r.detached {
+		// 生产：在独立 transient unit 中延迟 restart，避免发起者被同 cgroup 杀死。
+		return detachedSystemdRestart(r.Unit)
+	}
+	// guard（独立 cgroup）回滚重启：同步执行安全。
+	out, err := exec.Command("systemctl", "restart", r.Unit).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("systemctl restart %s: %w: %s", r.Unit, err, string(out))
 	}
 	return nil
+}
+
+// detachedSystemdRestart 通过 systemd-run 在独立 cgroup 的 oneshot unit 中
+// 延迟 1 秒重启目标服务；systemd-run 排队后即返回，不阻塞调用方。
+func detachedSystemdRestart(unit string) error {
+	name, err := uniqueRestartUnitName()
+	if err != nil {
+		return err
+	}
+	script := fmt.Sprintf("sleep 1; systemctl restart %s", unit)
+	cmd := exec.Command("systemd-run", "--collect", "--quiet",
+		"--unit", name, "/bin/sh", "-c", script)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("systemd-run 调度重启失败: %w: %s", err, string(out))
+	}
+	return nil
+}
+
+func uniqueRestartUnitName() (string, error) {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return "cagent-restart-" + hex.EncodeToString(b[:]), nil
 }
 
 // SystemInstaller 用复制+rename 实现二进制替换，兼容跨文件系统。
@@ -107,7 +146,7 @@ func (i *SystemInstaller) Activate(stagedPath string) error {
 	return nil
 }
 
-// Rollback 恢复备份。
+// Rollback 恢复备份。替换完成后 fsync 目录，确保 restart 一定读到旧版。
 func (i *SystemInstaller) Rollback() error {
 	if i.state.BackupPath == "" {
 		return fmt.Errorf("无备份路径")
@@ -122,7 +161,27 @@ func (i *SystemInstaller) Rollback() error {
 	if err := os.Rename(newPath, i.state.BinaryPath); err != nil {
 		return fmt.Errorf("回滚替换失败: %w", err)
 	}
+	// 关键：fsync 二进制所在目录，保证 rename 落盘，restart 读到旧版。
+	if dir, err := os.Open(filepath.Dir(i.state.BinaryPath)); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
+	// 同步确认磁盘版本确为旧版（guard 与服务分属不同 cgroup，可安全执行）。
+	if out, err := exec.Command(i.state.BinaryPath, "--version").CombinedOutput(); err == nil {
+		rollbackTrace(i.state, "回滚后磁盘二进制: %s", strings.TrimSpace(string(out)))
+	}
 	return nil
+}
+
+// rollbackTrace 写回滚诊断到 dataDir/rollback-trace.log。
+func rollbackTrace(state *UpgradeState, format string, a ...any) {
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(state.StagedPath), "..", "rollback-trace.log"),
+		os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, format+"\n", a...)
 }
 
 // Restart 重启服务（生产由 systemd 完成；首次重启前已 detach guard）。

@@ -67,7 +67,13 @@ func ClearState(path string) error {
 
 // MarkHealthy 由新版本 agent 在首次心跳成功后写入，供 guard 判定健康。
 func MarkHealthy(dataDir, version string) error {
-	return os.WriteFile(filepath.Join(dataDir, healthyFileName), []byte(version), 0o600)
+	path := filepath.Join(dataDir, healthyFileName)
+	if err := os.WriteFile(path, []byte(version), 0o600); err != nil {
+		probeTrace(dataDir, "写健康标记失败 version=%q err=%v", version, err)
+		return err
+	}
+	probeTrace(dataDir, "已写健康标记 version=%q pid=%d", version, os.Getpid())
+	return nil
 }
 
 // IsHealthy 判断健康标记是否存在且版本匹配。
