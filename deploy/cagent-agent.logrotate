@@ -1,0 +1,15 @@
+# cagent agent 本地执行审计日志轮转（由 logrotate 每日检查）
+# 安装到 /etc/logrotate.d/cagent-agent
+/var/lib/cagent/audit.log {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    # cagent 持续以 O_APPEND 写入；logrotate 复制后无需重载进程，
+    # copytruncate 保证不丢句柄、不需要通知 agent。
+    copytruncate
+    su root root
+    create 0600 root root
+}

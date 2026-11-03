@@ -23,6 +23,10 @@ const (
 	defaultEnrollmentTokenTTL = 7 * 24 * time.Hour
 	// ServerCertValidity 是首启生成的 server 叶子证书有效期（删文件重签轮换）。
 	ServerCertValidity = 10 * 365 * 24 * time.Hour
+	// 数据保留默认值：终态 job（含输出）保留 30 天，审计保留 90 天。
+	defaultJobRetention   = 30 * 24 * time.Hour
+	defaultAuditRetention = 90 * 24 * time.Hour
+	defaultPurgeInterval  = time.Hour
 )
 
 // 默认的 server 证书 SAN（生产安装应在配置中追加实际访问主机名/IP）。
@@ -52,6 +56,12 @@ type ServerConfig struct {
 	AgentCertValidity Duration `yaml:"agent_cert_validity"`
 	// EnrollmentTokenTTL 新建 token 的默认有效期。
 	EnrollmentTokenTTL Duration `yaml:"enrollment_token_ttl"`
+	// JobRetention 终态 job（含输出）保留时长，超期清理；0 用默认，负值禁用清理。
+	JobRetention Duration `yaml:"job_retention"`
+	// AuditRetention 审计记录保留时长；0 用默认，负值禁用清理。
+	AuditRetention Duration `yaml:"audit_retention"`
+	// PurgeInterval 数据清理周期。
+	PurgeInterval Duration `yaml:"purge_interval"`
 }
 
 // DefaultServerConfig 返回带全部默认值的 server 配置。
@@ -65,6 +75,9 @@ func DefaultServerConfig() *ServerConfig {
 		QueueTTL:           Duration(defaultQueueTTL),
 		AgentCertValidity:  Duration(defaultAgentCertValidity),
 		EnrollmentTokenTTL: Duration(defaultEnrollmentTokenTTL),
+		JobRetention:       Duration(defaultJobRetention),
+		AuditRetention:     Duration(defaultAuditRetention),
+		PurgeInterval:      Duration(defaultPurgeInterval),
 		ServerCertHosts:    append([]string(nil), defaultServerCertHosts...),
 	}
 }

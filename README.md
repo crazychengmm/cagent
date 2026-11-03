@@ -270,7 +270,12 @@ server 侧数据在 `/var/lib/cagent-server/`（SQLite、CA、发布包 `release
 ## 运维与数据保留
 
 - 服务日志走 journald（`journalctl -u cagent`），由 systemd 自动轮转
-- agent 本地执行审计 `audit.log` 为追加 JSONL，建议用 logrotate 管理（按天/大小轮转）
+- agent 本地执行审计 `audit.log` 为追加 JSONL，`install.sh` 会安装
+  `logrotate` 规则（`deploy/cagent-agent.logrotate`，每日轮转保留 14 份）；
+  手工安装时可自行放到 `/etc/logrotate.d/`
+- server 端终态 job（含输出）与审计按保留期自动清理（`job_retention` 默认 30 天、
+  `audit_retention` 默认 90 天，每小时一次；负值禁用）；在途 pending/running 任务永不清理
+- 三个端口均暴露标准 `grpc.health.v1` 健康检查，可用于存活探针/负载均衡
 - server 数据（SQLite + 发布包）位于 `/var/lib/cagent-server/`：
   - `cagent-server.db` 保存 agent、token、job（含输出，单任务上限 1MB）、审计
   - 任务输出与历史记录只增不删；如需控制体积，可定期备份后用 SQLite 按

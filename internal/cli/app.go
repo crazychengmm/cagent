@@ -339,8 +339,19 @@ func runServer(args []string, stderr io.Writer) int {
 		return exitError
 	}
 
+	// server 重启后所有控制流都已断开，把 DB 中残留的 online 重置为 offline，
+	// 避免管理面看到幽灵在线；agent 重连的首次心跳会立即刷新回 online。
+	if n, err := db.ResetOnlineAgents(context.Background()); err != nil {
+		logger.Error("重置在线状态失败", "error", err.Error())
+	} else if n > 0 {
+		logger.Info("启动时重置残留 online agent", "count", n)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// 定期清理过期终态 job/输出与审计，控制 SQLite 体积。
+	startRetentionJanitor(ctx, db, cfg, logger)
 
 	logger.Info("server 启动",
 		"enrollment_listen", cfg.EnrollmentListen,

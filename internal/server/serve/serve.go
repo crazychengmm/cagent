@@ -13,6 +13,8 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/crazychengmm/cagent/internal/server/admin"
 	"github.com/crazychengmm/cagent/internal/server/controlservice"
@@ -71,6 +73,14 @@ func Run(ctx context.Context, d Deps) error {
 		return err
 	}
 	adminServer := d.buildAdminServer()
+
+	// 标准 gRPC 健康检查（grpc.health.v1），供存活探针/负载均衡使用。
+	// 三个端口都注册；健康判定为进程可服务（细粒度依赖状态由管理面查询）。
+	hs := health.NewServer()
+	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	for _, srv := range []*grpc.Server{enrollmentServer, controlServer, adminServer} {
+		healthpb.RegisterHealthServer(srv, hs)
+	}
 
 	servers := make([]*managedServer, 0, 3)
 	for _, item := range []struct {

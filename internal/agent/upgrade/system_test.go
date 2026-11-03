@@ -2,7 +2,6 @@ package upgrade
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -157,8 +156,6 @@ func TestRollbackRestarter_RunsCustomCommandSynchronously(t *testing.T) {
 		t.Fatalf("回滚重启命令未执行: %v", err)
 	}
 }
-
-var errFake = errors.New("fake command failure")
 
 type fakeRestarter struct {
 	fn func() error

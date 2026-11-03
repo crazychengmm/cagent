@@ -177,6 +177,12 @@ UNIT
 fi
 ROLLBACK_FILES="$ROLLBACK_FILES $UNIT_DST"
 
+# logrotate：轮转本地执行审计 audit.log（系统装了 logrotate 才部署）
+LOGROTATE_SRC="$SCRIPT_DIR/../deploy/cagent-agent.logrotate"
+if [ -f "$LOGROTATE_SRC" ] && command -v logrotate >/dev/null 2>&1; then
+	install -m 0644 "$LOGROTATE_SRC" /etc/logrotate.d/cagent-agent
+fi
+
 systemctl daemon-reload
 systemctl enable cagent.service >/dev/null 2>&1
 systemctl restart cagent.service

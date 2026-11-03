@@ -24,5 +24,10 @@ heartbeat_timeout: 45s
 # 离线排队任务多久过期（默认 24h）
 queue_ttl: 24h
 
+# 数据保留（控制 SQLite 体积；负值禁用对应清理，0 用默认）
+job_retention: 720h    # 终态 job 及输出保留 30 天（默认）
+audit_retention: 2160h # 审计保留 90 天（默认）
+purge_interval: 1h     # 清理周期（默认）
+
 # 发布包签名公钥：配置后 publish 时服务端也校验签名（可选纵深防御）
 # release_signing_pubkey_file: "/etc/cagent/release.pub"

@@ -31,6 +31,12 @@ func (s *Service) CreateToken(ctx context.Context,
 	if err != nil {
 		return nil, status.Error(codes.Internal, "创建 token 失败")
 	}
+	detail, _ := json.Marshal(map[string]any{
+		"token_id": record.ID, "description": record.Description, "ttl_seconds": int64(ttl.Seconds())})
+	_ = s.store.InsertAudit(ctx, store.AuditLog{
+		At: s.now().UTC(), Actor: actorFromContext(ctx),
+		Action: store.ActionTokenCreate, Detail: detail,
+	})
 	return &pb.CreateTokenResponse{Plaintext: plaintext, Token: toTokenInfo(record)}, nil
 }
 
@@ -54,6 +60,11 @@ func (s *Service) RevokeToken(ctx context.Context,
 	} else if !ok {
 		return nil, status.Errorf(codes.NotFound, "token %s 不存在", req.GetId())
 	}
+	detail, _ := json.Marshal(map[string]any{"token_id": req.GetId()})
+	_ = s.store.InsertAudit(ctx, store.AuditLog{
+		At: s.now().UTC(), Actor: actorFromContext(ctx),
+		Action: store.ActionTokenRevoke, Detail: detail,
+	})
 	return &pb.RevokeTokenResponse{}, nil
 }
 

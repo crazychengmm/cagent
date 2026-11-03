@@ -371,3 +371,13 @@
 - 真实环境实测结论（Ubuntu 22.04 arm64 + systemd 249）：① install.sh 一键安装 active+enabled、0700/0600 权限正确、mTLS 自动注册 online；② kill -9 后 Restart=always 自动拉起且身份复用；③ 远程任务输出/退出码/双端审计正确；④ 健康升级 2.1.0→2.1.1 门控 1s 通过、job succeeded、旧副本与 transient unit 全部清理；⑤ 损坏版 4.0.1 60s 门控超时后自动回滚 3.1.0 并 online，job failed 原因明确（trace: 健康门控超时 last=3.1.0）；⑥ 默认降级 3.1.0→3.0.0 被拒。
 - 新增 TestSpawnGuard_UsesTrustedOldBinary 等回归测试；README 用 Mermaid 重画架构图与时序图（用户要求），并补充 systemd cgroup 解耦、可信 guard 二进制等设计要点。
 - 说明：e2e 注入重启脚本（非 systemd）与生产（systemd-run）走两条路径，正好互补——前者验证编排/状态机，后者暴露真实 init 系统语义；二者都必须保留。
+
+### 2026-11-03 Review 第二轮：server 状态一致性 / 数据保留 / 审计 / 可观测性
+在真实 systemd 验证后又做了一轮代码审查，修复 5 个生产问题：
+- 【正确性】server 重启后 DB 残留 online 幽灵（registry 内存已清空，但 agents.status 仍 online，管理面误判在线，最坏要等心跳超时+sweep 才恢复）。新增 store.ResetOnlineAgents，server 启动时统一置 offline，agent 重连首跳即刷新。
+- 【运维/容量】SQLite 无数据保留：job_output、终态 jobs、audit_logs 只增不删，长期运行无限膨胀。新增 store.PurgeOldData（同事务级联删终态 job+输出，pending/running 永不删）+ cli.startRetentionJanitor（启动 30s 后每小时执行），新增配置 job_retention(默认30d)/audit_retention(默认90d)/purge_interval，负值禁用；补 ResetOnlineAgents/PurgeOldData 单测。
+- 【安全审计】enrollment token 的 create/revoke 此前无审计（敏感操作缺口），补 token.create/token.revoke 审计（操作者/token id/TTL）。
+- 【可观测】三个 gRPC 端口注册标准 grpc.health.v1，供存活探针/负载均衡。
+- 【运维】agent 本地 audit.log 是 O_APPEND 永不轮转；新增 deploy/cagent-agent.logrotate（daily/14 份/copytruncate），install.sh 在系统有 logrotate 时自动部署。
+- 清理 staticcheck 死代码（errFake）；server 配置示例与 README 同步保留期/健康端点/logrotate 说明。
+- 门禁：gofmt/vet/staticcheck 干净，go test -race 全绿，test/e2e 通过，linux amd64+arm64 静态编译，openspec strict 通过。
