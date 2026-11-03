@@ -278,9 +278,61 @@ server 侧数据在 `/var/lib/cagent-server/`（SQLite、CA、发布包 `release
 - 三个端口均暴露标准 `grpc.health.v1` 健康检查，可用于存活探针/负载均衡
 - server 数据（SQLite + 发布包）位于 `/var/lib/cagent-server/`：
   - `cagent-server.db` 保存 agent、token、job（含输出，单任务上限 1MB）、审计
-  - 任务输出与历史记录只增不删；如需控制体积，可定期备份后用 SQLite 按
-    `finished_at` 清理旧 `job_output`（job 元数据与审计行可保留更久以满足合规）
+  - 终态 job/输出/审计由内置 janitor 按保留期自动清理（见上）；如需更长保留期调整配置即可
 - 备份：停服后复制整个数据目录即可（含 CA 密钥与 SQLite），恢复时保持 0600/0700 权限
+
+## 发布流程
+
+版本号用语义化 `x.y.z`。二进制由 CI 从 git tag 构建并注入版本信息
+（`-ldflags -X internal/version.Version=…`），默认本地构建为 `dev`。
+
+### 方式一：打 tag 自动发布（推荐）
+
+推送 `v*` tag 即触发 GitHub Actions（`.github/workflows/release.yml`）：
+跑测试 → 构建 linux/amd64 + linux/arm64 静态二进制 → 计算 SHA256 → 创建 GitHub Release。
+
+```bash
+git tag -a v1.2.3 -m "v1.2.3"
+git push origin v1.2.3
+# Release 产物：cagent-1.2.3-linux-amd64 / -linux-arm64 / -SHA256SUMS
+```
+
+日常 push/PR 由 `.github/workflows/ci.yml` 跑 gofmt、vet、`-race` 测试与交叉编译。
+
+### 方式二：本地构建
+
+```bash
+make release-assets VERSION=1.2.3
+# dist/cagent-1.2.3-linux-amd64
+# dist/cagent-1.2.3-linux-arm64
+# dist/cagent-1.2.3-SHA256SUMS
+```
+
+### 制作并发布签名升级包
+
+ed25519 签名私钥**离线妥善保管，不进 CI**：
+
+```bash
+# 首次：生成签名密钥对（公钥通过 install.sh --signing-pubkey 分发给 agent）
+cagent ctl release keygen --key release.key --pub release.pub
+
+# 用已发布的 linux 二进制打 tar.gz 包并离线签名
+cagent ctl release package --binary cagent-1.2.3-linux-amd64 \
+  --version 1.2.3 --out cagent-1.2.3.pkg
+cagent ctl release sign --key release.key --pkg cagent-1.2.3.pkg
+# 产物：cagent-1.2.3.pkg + cagent-1.2.3.pkg.sig
+
+# 上传到运行中的 server（经 admin API）
+cagent ctl release publish --pkg cagent-1.2.3.pkg --sig cagent-1.2.3.pkg.sig
+
+# 灰度/全量
+cagent ctl upgrade --release 1.2.3 --selector env=canary
+```
+
+校验发布产物完整性：
+```bash
+sha256sum -c cagent-1.2.3-SHA256SUMS
+```
 
 ## 测试
 

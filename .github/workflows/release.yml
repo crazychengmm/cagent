@@ -1,0 +1,58 @@
+name: release
+
+# 推送 v* 语义版本 tag 时，构建 linux/amd64 与 linux/arm64 静态二进制，
+# 计算 SHA256，并发布到 GitHub Release。
+#
+# 发布包签名（ed25519）由发布者在受控环境离线完成，私钥不进 CI：
+#   make release-assets VERSION=x.y.z
+#   cagent ctl release sign --key release.key --pkg dist/cagent-x.y.z.pkg
+# 详见 README「发布流程」。
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache: true
+
+      - name: Run tests
+        run: make test-race
+
+      - name: Build static binaries
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: make build-linux
+
+      - name: Rename artifacts and compute checksums
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#v}"
+          cd dist
+          mv cagent-linux-amd64 "cagent-${V}-linux-amd64"
+          mv cagent-linux-arm64 "cagent-${V}-linux-arm64"
+          sha256sum "cagent-${V}-linux-amd64" "cagent-${V}-linux-arm64" > "cagent-${V}-SHA256SUMS"
+          cat "cagent-${V}-SHA256SUMS"
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/cagent-*-linux-amd64
+            dist/cagent-*-linux-arm64
+            dist/cagent-*-SHA256SUMS

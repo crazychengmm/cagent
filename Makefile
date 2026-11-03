@@ -10,8 +10,10 @@ LDFLAGS  := -s -w \
 	-X $(MODULE)/internal/version.Commit=$(COMMIT)
 
 DIST := dist
+# Linux 用 sha256sum，macOS 无 coreutils 时回退到 shasum（输出格式与 -c 互通）。
+SHASUM := $(shell command -v sha256sum 2>/dev/null || echo "shasum -a 256")
 
-.PHONY: all build build-linux proto fmt vet test test-race package clean
+.PHONY: all build build-linux proto fmt vet test test-race package release-assets clean
 
 all: build
 
@@ -53,6 +55,19 @@ package: build-linux build
 		--binary $(DIST)/$(BINARY)-linux-amd64 \
 		--version $(VERSION) \
 		--out $(DIST)/$(BINARY)-$(VERSION).pkg
+
+# release-assets：构建双架构静态二进制并按版本重命名、生成 SHA256SUMS。
+# 用法：make release-assets VERSION=1.0.0
+# GitHub Actions 在打 v* tag 时自动执行同样步骤（见 .github/workflows/release.yml）。
+SEMVER := $(patsubst v%,%,$(VERSION))
+release-assets: build-linux
+	mv $(DIST)/$(BINARY)-linux-amd64 $(DIST)/$(BINARY)-$(SEMVER)-linux-amd64
+	mv $(DIST)/$(BINARY)-linux-arm64 $(DIST)/$(BINARY)-$(SEMVER)-linux-arm64
+	cd $(DIST) && $(SHASUM) \
+		$(BINARY)-$(SEMVER)-linux-amd64 \
+		$(BINARY)-$(SEMVER)-linux-arm64 > $(BINARY)-$(SEMVER)-SHA256SUMS
+	@echo "产物在 $(DIST)/，校验和："
+	@cat $(DIST)/$(BINARY)-$(SEMVER)-SHA256SUMS
 
 clean:
 	rm -rf $(DIST)

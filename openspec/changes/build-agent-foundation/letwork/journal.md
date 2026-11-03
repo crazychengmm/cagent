@@ -381,3 +381,10 @@
 - 【运维】agent 本地 audit.log 是 O_APPEND 永不轮转；新增 deploy/cagent-agent.logrotate（daily/14 份/copytruncate），install.sh 在系统有 logrotate 时自动部署。
 - 清理 staticcheck 死代码（errFake）；server 配置示例与 README 同步保留期/健康端点/logrotate 说明。
 - 门禁：gofmt/vet/staticcheck 干净，go test -race 全绿，test/e2e 通过，linux amd64+arm64 静态编译，openspec strict 通过。
+
+### 2026-11-04 v1.0.0 发布工程化
+- 打首个语义版本 tag v1.0.0（annotated，指向 78fcfd9），已推送 GitHub。
+- 新增 .github/workflows/release.yml：推 v* tag 自动跑 make test-race → CGO 静态双架构构建 → SHA256SUMS → 创建 GitHub Release（附 linux amd64/arm64 二进制与校验和）。
+- 新增 .github/workflows/ci.yml：push/PR 跑 gofmt、go vet、go test -race、交叉编译。
+- Makefile 新增 release-assets VERSION=x.y.z（本地等价 CI 构建，跨平台 shasum 回退）；README 新增「发布流程」章节（tag 自动发布/本地构建/签名升级包/校验）。
+- 签名 ed25519 私钥保持离线、不进 CI；CI 只产未签名二进制，签名包由发布者离线生成后 publish。
