@@ -33,9 +33,7 @@ jobs:
         run: make test-race
 
       - name: Build static binaries
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: make build-linux
+        run: make build-linux VERSION="${GITHUB_REF_NAME#v}"
 
       - name: Rename artifacts and compute checksums
         run: |

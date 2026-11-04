@@ -3,6 +3,7 @@
 
 BINARY   := cagent
 MODULE   := github.com/crazychengmm/cagent
+# 语义版本 x.y.z（无 v 前缀）；CI 用 VERSION="${GITHUB_REF_NAME#v}" 剥离 tag 前缀。
 VERSION  ?= dev
 COMMIT   ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS  := -s -w \
