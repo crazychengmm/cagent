@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cagent 状态面板（只读）</title>
+<style>
+  :root { --bg:#0f1419; --card:#1a2027; --line:#2a323c; --fg:#e6e9ec; --muted:#8b95a1;
+          --ok:#3fb950; --warn:#d29922; --err:#f85149; --accent:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px; background:var(--bg); color:var(--fg);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:var(--muted); margin-bottom:24px; font-size:13px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card .num { font-size:28px; font-weight:600; }
+  .card .lbl { color:var(--muted); font-size:12px; margin-top:4px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px;
+            padding:18px; margin-bottom:20px; overflow-x:auto; }
+  h2 { font-size:15px; margin:0 0 12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; }
+  tr:last-child td { border-bottom:none; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:500; }
+  .b-online { background:rgba(63,185,80,.15); color:var(--ok); }
+  .b-offline { background:rgba(139,149,161,.15); color:var(--muted); }
+  .b-succeeded { background:rgba(63,185,80,.15); color:var(--ok); }
+  .b-failed { background:rgba(248,81,73,.15); color:var(--err); }
+  .b-running { background:rgba(88,166,255,.15); color:var(--accent); }
+  .b-pending,.b-expired,.b-timeout,.b-canceled { background:rgba(210,153,34,.15); color:var(--warn); }
+  .muted { color:var(--muted); }
+  .mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .empty { color:var(--muted); padding:12px 0; }
+  code { font-family:ui-monospace,Menlo,monospace; color:var(--accent); }
+</style>
+</head>
+<body>
+<h1>cagent 状态面板</h1>
+<div class="sub">只读视图 · 生成于 {{.GeneratedAt.Format "2006-01-02 15:04:05 MST"}}</div>
+
+<div class="grid">
+  <div class="card"><div class="num">{{.Stats.AgentsTotal}}</div><div class="lbl">Agent 总数</div></div>
+  <div class="card"><div class="num" style="color:var(--ok)">{{.Stats.AgentsOnline}}</div><div class="lbl">在线</div></div>
+  <div class="card"><div class="num" style="color:var(--muted)">{{.Stats.AgentsOffline}}</div><div class="lbl">离线</div></div>
+  <div class="card"><div class="num">{{len .Jobs}}</div><div class="lbl">最近任务（最多 50）</div></div>
+</div>
+
+<section>
+  <h2>Agent（{{len .Agents}}）</h2>
+  {{if .Agents}}
+  <table>
+    <thead><tr><th>ID</th><th>主机名</th><th>状态</th><th>版本</th><th>标签</th><th>最近心跳</th><th>证书到期</th></tr></thead>
+    <tbody>
+    {{range .Agents}}
+      <tr>
+        <td class="mono">{{shortID .AgentID}}</td>
+        <td>{{.Hostname}}</td>
+        <td>{{if eq .Status "online"}}<span class="badge b-online">online</span>{{else}}<span class="badge b-offline">{{.Status}}</span>{{end}}</td>
+        <td class="mono">{{.Version}}</td>
+        <td>{{range $k,$v := .Labels}}<span class="badge b-running">{{$k}}={{$v}}</span> {{end}}</td>
+        <td>{{if .LastHeartbeatAt}}{{.LastHeartbeatAt.Format "01-02 15:04:05"}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{if .CertNotAfter}}{{.CertNotAfter.Format "2006-01-02"}}{{else}}<span class="muted">—</span>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="empty">暂无注册 agent</div>{{end}}
+</section>
+
+<section>
+  <h2>最近任务</h2>
+  {{if .Jobs}}
+  <table>
+    <thead><tr><th>Job ID</th><th>Agent</th><th>类型</th><th>状态</th><th>退出码</th><th>创建时间</th></tr></thead>
+    <tbody>
+    {{range .Jobs}}
+      <tr>
+        <td class="mono">{{shortID .JobID}}</td>
+        <td class="mono">{{shortID .AgentID}}</td>
+        <td>{{.Kind}}</td>
+        <td><span class="badge b-{{.Status}}">{{.Status}}</span></td>
+        <td>{{if .ExitCode}}{{.ExitCode}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{.CreatedAt.Format "01-02 15:04:05"}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="empty">暂无任务</div>{{end}}
+</section>
+
+<section>
+  <h2>发布版本（{{len .Releases}}）</h2>
+  {{if .Releases}}
+  <table>
+    <thead><tr><th>版本</th><th>大小</th><th>SHA256</th><th>上传者</th></tr></thead>
+    <tbody>
+    {{range .Releases}}
+      <tr>
+        <td class="mono">{{.Version}}</td>
+        <td>{{.Size}} B</td>
+        <td class="mono">{{if gt (len .SHA256Hex) 16}}{{slice .SHA256Hex 0 16}}…{{else}}{{.SHA256Hex}}{{end}}</td>
+        <td>{{.UploadedBy}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="empty">暂无发布</div>{{end}}
+</section>
+
+<section>
+  <h2>审计（最近 {{len .Audits}} 条）</h2>
+  {{if .Audits}}
+  <table>
+    <thead><tr><th>时间</th><th>操作者</th><th>动作</th><th>对象</th></tr></thead>
+    <tbody>
+    {{range .Audits}}
+      <tr>
+        <td>{{.At.Format "01-02 15:04:05"}}</td>
+        <td>{{.Actor}}</td>
+        <td><code>{{.Action}}</code></td>
+        <td class="mono">{{if .JobID}}{{shortID .JobID}}{{else}}—{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}<div class="empty">暂无审计记录</div>{{end}}
+</section>
+
+<div class="sub">cagent dashboard · 只读，无任何写操作入口 · 管理请使用 <code>cagent ctl</code></div>
+</body>
+</html>

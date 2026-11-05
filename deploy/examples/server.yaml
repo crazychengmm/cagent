@@ -31,3 +31,7 @@ purge_interval: 1h     # 清理周期（默认）
 
 # 发布包签名公钥：配置后 publish 时服务端也校验签名（可选纵深防御）
 # release_signing_pubkey_file: "/etc/cagent/release.pub"
+
+# 只读状态面板（HTTP，仅展示不写；建议绑 127.0.0.1 经反代加 TLS）
+# dashboard_listen: "127.0.0.1:9446"
+# dashboard_token: "面板访问令牌"   # 启用时必填，浏览器访问 /?token=xxx 或 Bearer 头

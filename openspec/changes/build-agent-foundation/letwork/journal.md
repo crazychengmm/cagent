@@ -388,3 +388,14 @@
 - 新增 .github/workflows/ci.yml：push/PR 跑 gofmt、go vet、go test -race、交叉编译。
 - Makefile 新增 release-assets VERSION=x.y.z（本地等价 CI 构建，跨平台 shasum 回退）；README 新增「发布流程」章节（tag 自动发布/本地构建/签名升级包/校验）。
 - 签名 ed25519 私钥保持离线、不进 CI；CI 只产未签名二进制，签名包由发布者离线生成后 publish。
+
+### 2026-11-05 只读状态面板（dashboard）
+新增 server 可选的只读 HTTP 状态面板（用户选择只读方向，刻意不做写操作，保持 mTLS/admin token 安全边界）：
+- internal/server/dashboard：net/http + go:embed html/template，零新依赖；展示 agent 在线/版本/标签/心跳/证书到期、最近任务、发布版本、最近审计、统计卡片。
+- 安全：Bearer 令牌（subtle.ConstantTimeCompare 常量时间比较）；无令牌 401、错误 401、非 GET 405；html/template 自动转义（含 XSS 单测）；安全头 X-Frame-Options DENY/CSP/nosniff/Referrer-Policy；/healthz 免令牌；建议绑 127.0.0.1 或反代加 TLS。
+- 配置 dashboard_listen（空=不启用）+ dashboard_token（启用必填），端口冲突校验；纳入 server config 与 deploy/examples。
+- 随 server 信号优雅 Shutdown，ReadHeaderTimeout 防慢连接。
+- 修复：模板 slice 截断短 ID 越界 panic → shortID 安全函数；ExitCode 是 *int 非 sql.NullInt32，修正模板访问并补带 job 渲染测试。
+- 测试：单测 7 个（鉴权/渲染/安全头/POST 拒绝/XSS/job 渲染/空 token 拒绝）；e2e 2 个（真实 server HTTP 鉴权与只读、agent 上线页面可见）。
+- OrbStack Ubuntu 22.04 实测：2 agent（prod/db + staging/web 标签）、4 任务（含 failed）、杀 1 agent 后页面 45s 正确显示 1 online/1 offline；跨机访问 VM 9446 被默认防火墙拦截（符合预期）。
+- README 增加「只读状态面板」章节。

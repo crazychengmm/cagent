@@ -281,6 +281,36 @@ server 侧数据在 `/var/lib/cagent-server/`（SQLite、CA、发布包 `release
   - 终态 job/输出/审计由内置 janitor 按保留期自动清理（见上）；如需更长保留期调整配置即可
 - 备份：停服后复制整个数据目录即可（含 CA 密钥与 SQLite），恢复时保持 0600/0700 权限
 
+## 只读状态面板
+
+server 可选启用一个**只读** HTTP 状态面板，零外部依赖（Go `net/http` + `html/template`）：
+
+```yaml
+# server.yaml
+dashboard_listen: "127.0.0.1:9446"   # 建议仅绑本地或经反代加 TLS
+dashboard_token: "面板访问令牌"        # 启用时必填
+```
+
+访问方式：
+
+```bash
+# Bearer 头（适合脚本/反代）
+curl -H "Authorization: Bearer <token>" http://127.0.0.1:9446/
+# 浏览器首次访问（token 在 URL，不会出现在页面链接中）
+open "http://127.0.0.1:9446/?token=<token>"
+# 存活探针，无需令牌
+curl http://127.0.0.1:9446/healthz
+```
+
+面板展示：Agent 在线/版本/标签/心跳/证书到期、最近任务状态、发布版本、最近审计。
+
+**安全边界**：
+
+- 只有 GET、**无任何写操作入口**（命令/升级/token 管理仍走 mTLS gRPC 与 ctl）
+- Bearer 令牌常量时间比较；缺令牌一律 401；POST 等非 GET 方法返回 405
+- 输出经 `html/template` 自动转义（防 XSS），带 `X-Frame-Options: DENY`、CSP 等安全头
+- 不应直接暴露公网；需要远程访问时用 SSH 隧道或带 TLS/鉴权的反向代理
+
 ## 发布流程
 
 版本号用语义化 `x.y.z`。二进制由 CI 从 git tag 构建并注入版本信息

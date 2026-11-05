@@ -27,9 +27,11 @@ type Harness struct {
 	BaseDir  string
 	ServerID string
 
-	enrollAddr  string
-	controlAddr string
-	adminAddr   string
+	enrollAddr    string
+	controlAddr   string
+	adminAddr     string
+	dashboardAddr string
+	dashboardTok  string
 
 	privKeyPath string
 	pubKeyPath  string
@@ -123,14 +125,16 @@ func New(t *testing.T) *Harness {
 	root := projectRoot(t)
 	base := t.TempDir()
 	h := &Harness{
-		t:           t,
-		Root:        root,
-		Binary:      filepath.Join(base, "cagent"),
-		BaseDir:     base,
-		agentProcs:  map[string]*agentProc{},
-		enrollAddr:  freePort(t),
-		controlAddr: freePort(t),
-		adminAddr:   freePort(t),
+		t:             t,
+		Root:          root,
+		Binary:        filepath.Join(base, "cagent"),
+		BaseDir:       base,
+		agentProcs:    map[string]*agentProc{},
+		enrollAddr:    freePort(t),
+		controlAddr:   freePort(t),
+		adminAddr:     freePort(t),
+		dashboardAddr: freePort(t),
+		dashboardTok:  "dash-secret",
 	}
 	h.buildBinary(h.Binary, "1.0.0")
 	h.generateSigningKey()
@@ -180,7 +184,10 @@ queue_ttl: 60s
 agent_cert_validity: 90d
 enrollment_token_ttl: 168h
 release_signing_pubkey_file: "%s"
-`, h.enrollAddr, h.controlAddr, h.adminAddr, dataDir, h.pubKeyPath)
+dashboard_listen: "%s"
+dashboard_token: "%s"
+`, h.enrollAddr, h.controlAddr, h.adminAddr, dataDir, h.pubKeyPath,
+		h.dashboardAddr, h.dashboardTok)
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o600); err != nil {
 		h.t.Fatal(err)
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -31,6 +32,7 @@ import (
 	"github.com/crazychengmm/cagent/internal/server/admin"
 	"github.com/crazychengmm/cagent/internal/server/ca"
 	"github.com/crazychengmm/cagent/internal/server/controlservice"
+	"github.com/crazychengmm/cagent/internal/server/dashboard"
 	"github.com/crazychengmm/cagent/internal/server/dispatch"
 	"github.com/crazychengmm/cagent/internal/server/enrollment"
 	"github.com/crazychengmm/cagent/internal/server/enrollservice"
@@ -349,6 +351,32 @@ func runServer(args []string, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// 只读状态面板（可选）：HTTP + Bearer 令牌，仅展示不写。
+	if cfg.DashboardListen != "" {
+		dash, err := dashboard.New(db, cfg.DashboardToken)
+		if err != nil {
+			logger.Error("初始化状态面板失败", "error", err.Error())
+			return exitError
+		}
+		httpSrv := &http.Server{
+			Addr:              cfg.DashboardListen,
+			Handler:           dash.Handler(),
+			ReadHeaderTimeout: 10 * time.Second,
+		}
+		go func() {
+			logger.Info("状态面板监听", "addr", cfg.DashboardListen)
+			if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("状态面板退出", "error", err.Error())
+			}
+		}()
+		go func() {
+			<-ctx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = httpSrv.Shutdown(shutdownCtx)
+		}()
+	}
 
 	// 定期清理过期终态 job/输出与审计，控制 SQLite 体积。
 	startRetentionJanitor(ctx, db, cfg, logger)

@@ -62,6 +62,11 @@ type ServerConfig struct {
 	AuditRetention Duration `yaml:"audit_retention"`
 	// PurgeInterval 数据清理周期。
 	PurgeInterval Duration `yaml:"purge_interval"`
+	// DashboardListen 只读状态面板 HTTP 监听地址；为空则不启用。
+	// 例如 "127.0.0.1:9446"（建议仅绑本地或经反代加 TLS）。
+	DashboardListen string `yaml:"dashboard_listen"`
+	// DashboardToken 面板访问令牌（Bearer）；为空但启用了面板时启动报错。
+	DashboardToken string `yaml:"dashboard_token"`
 }
 
 // DefaultServerConfig 返回带全部默认值的 server 配置。
@@ -116,6 +121,16 @@ func (c *ServerConfig) Validate() error {
 	if c.EnrollmentListen == c.ControlListen || c.EnrollmentListen == c.AdminListen ||
 		c.ControlListen == c.AdminListen {
 		return errors.New("enrollment/control/admin 三个监听地址必须互不相同")
+	}
+	// 只读面板：启用时必须提供非空令牌，且不能与其他端口冲突。
+	if c.DashboardListen != "" {
+		if c.DashboardToken == "" {
+			return errors.New("启用 dashboard_listen 时必须配置 dashboard_token")
+		}
+		switch c.DashboardListen {
+		case c.EnrollmentListen, c.ControlListen, c.AdminListen:
+			return errors.New("dashboard_listen 不能与 gRPC 端口相同")
+		}
 	}
 	if c.DataDir == "" {
 		return errors.New("data_dir 不能为空")
